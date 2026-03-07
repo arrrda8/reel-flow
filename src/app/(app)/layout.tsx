@@ -8,7 +8,12 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const adminStatus = await isAdmin();
+  let adminStatus = false;
+  try {
+    adminStatus = await isAdmin();
+  } catch {
+    // Fail gracefully if DB or auth is unavailable
+  }
 
   return (
     <SessionProvider>

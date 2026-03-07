@@ -23,6 +23,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Admin | ReelFlow",
   description: "Administration overview",

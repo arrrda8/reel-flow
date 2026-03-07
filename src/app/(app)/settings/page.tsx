@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { getProfile, getApiKeys, getCostSummary } from "@/lib/settings-actions";
 import { SettingsTabs } from "./settings-tabs";
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   const session = await auth();
   if (!session?.user) {

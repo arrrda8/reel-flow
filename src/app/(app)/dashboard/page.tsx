@@ -7,6 +7,8 @@ import { CreateProjectDialog } from "@/components/projects/create-project-dialog
 import { Plus } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Dashboard | ReelFlow",
   description: "Manage your video projects",
@@ -19,7 +21,12 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const projects = await getProjects();
+  let projects: Awaited<ReturnType<typeof getProjects>> = [];
+  try {
+    projects = await getProjects();
+  } catch (error) {
+    console.error("Failed to load projects:", error);
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
