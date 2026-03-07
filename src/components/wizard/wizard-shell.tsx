@@ -15,7 +15,6 @@ import { StepMusic } from "@/components/wizard/steps/step-music";
 import { StepSubtitles } from "@/components/wizard/steps/step-subtitles";
 import { StepPreview } from "@/components/wizard/steps/step-preview";
 import { StepRender } from "@/components/wizard/steps/step-render";
-import { getProjectById } from "@/lib/project-actions";
 
 // ---------------------------------------------------------------------------
 // Step component registry
@@ -50,13 +49,13 @@ export function WizardShellLoader({ projectId, children }: WizardShellLoaderProp
 
   const loadProject = useCallback(async () => {
     try {
-      const result = await getProjectById(projectId);
-      if (!result.success) {
+      const res = await fetch(`/api/project/${projectId}`);
+      const result = await res.json();
+      if (!res.ok || !result.success) {
         router.replace("/dashboard");
         return;
       }
-      // Serialize dates
-      setProject(JSON.parse(JSON.stringify(result.project)));
+      setProject(result.project);
     } catch {
       setError("Failed to load project");
     }
