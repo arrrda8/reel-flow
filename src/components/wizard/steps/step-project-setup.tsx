@@ -21,7 +21,7 @@ import {
 } from "@phosphor-icons/react";
 import { StepContent } from "@/components/wizard/step-content";
 import { useWizardStore } from "@/stores/wizard-store";
-import { updateProjectSettings } from "@/lib/project-actions";
+import { callAction } from "@/lib/call-action";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -233,15 +233,19 @@ export function StepProjectSetup() {
       setSaveError(null);
 
       try {
-        const result = await updateProjectSettings(projectId, {
-          name,
-          platform,
-          targetDuration,
-          aspectRatio,
-          stylePresetId,
-          llmProvider,
-          promptReviewEnabled,
-        });
+        const result = await callAction<{ success: boolean; error?: string }>(
+          "updateProjectSettings",
+          projectId,
+          {
+            name,
+            platform,
+            targetDuration,
+            aspectRatio,
+            stylePresetId,
+            llmProvider,
+            promptReviewEnabled,
+          }
+        );
 
         if (result.success) {
           updateProjectData({
@@ -254,7 +258,7 @@ export function StepProjectSetup() {
             promptReviewEnabled,
           });
         } else {
-          setSaveError(result.error);
+          setSaveError(result.error ?? "Failed to save settings");
         }
       } finally {
         setSaving(false);

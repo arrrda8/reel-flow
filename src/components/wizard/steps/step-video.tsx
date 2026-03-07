@@ -26,14 +26,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import {
-  listKieModels,
-  generateVideo,
-  getSceneImageKeys,
-  getVideoPresignedUrl,
-  checkKieApiKey,
-} from "@/lib/video-actions";
 import type { KieModel } from "@/lib/ai/providers/kie";
+import { callAction } from "@/lib/call-action";
 
 // ---------------------------------------------------------------------------
 // Scene Video Row
@@ -254,13 +248,13 @@ export function StepVideo() {
 
     const init = async () => {
       // Check API key
-      const apiKeyExists = await checkKieApiKey();
+      const apiKeyExists = await callAction<boolean>("checkKieApiKey");
       setHasApiKey(apiKeyExists);
 
       if (apiKeyExists) {
         // Load models
         try {
-          const kieModels = await listKieModels();
+          const kieModels = await callAction<KieModel[]>("listKieModels");
           setModels(kieModels);
           if (kieModels.length > 0) {
             setSelectedModel(kieModels[0].id);
@@ -272,7 +266,7 @@ export function StepVideo() {
 
       // Load scene image keys
       try {
-        const sceneImageInfos = await getSceneImageKeys(projectData.id);
+        const sceneImageInfos = await callAction<Array<{ sceneId: string; imageKey: string }>>("getSceneImageKeys", projectData.id);
         const keyMap = new Map<string, string>();
         const urlMap = new Map<string, string>();
         let anyImage = false;
@@ -284,7 +278,7 @@ export function StepVideo() {
 
             // Get presigned URL for display
             try {
-              const url = await getVideoPresignedUrl(info.imageKey);
+              const url = await callAction<string>("getVideoPresignedUrl",info.imageKey);
               urlMap.set(info.sceneId, url);
             } catch {
               // Image URL fetch failed – non-critical
@@ -356,7 +350,8 @@ export function StepVideo() {
       });
 
       try {
-        const result = await generateVideo(
+        const result = await callAction<{ videoKey: string }>(
+          "generateVideo",
           projectData.id,
           scene.id,
           imageKey,
@@ -365,7 +360,7 @@ export function StepVideo() {
         );
 
         // Get presigned URL for the generated video
-        const url = await getVideoPresignedUrl(result.videoKey);
+        const url = await callAction<string>("getVideoPresignedUrl", result.videoKey);
 
         setVideoKeys((prev) => {
           const next = new Map(prev);

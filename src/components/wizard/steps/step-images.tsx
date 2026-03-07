@@ -18,14 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import {
-  generateImagePrompt,
-  generateImage,
-  getImageUrl,
-  loadSceneImages,
-  selectImageVariant,
-  type SceneImageData,
-} from "@/lib/image-actions";
+import type { SceneImageData } from "@/lib/image-actions";
+import { callAction } from "@/lib/call-action";
 
 // ---------------------------------------------------------------------------
 // Image Slot Component
@@ -293,7 +287,7 @@ export function StepImages() {
 
     (async () => {
       try {
-        const existing = await loadSceneImages(projectData.id);
+        const existing = await callAction<SceneImageData[]>("loadSceneImages", projectData.id);
         if (existing.length === 0) return;
 
         const urlMap = new Map<number, Map<number, string>>();
@@ -375,7 +369,8 @@ export function StepImages() {
       // Step 1: Get or use existing prompt
       let prompt = editedPrompts.get(sceneIndex) ?? "";
       if (!prompt) {
-        prompt = await generateImagePrompt(
+        prompt = await callAction<string>(
+          "generateImagePrompt",
           projectData.id,
           scene.visualDescription ?? "",
           scene.narrationText ?? ""
@@ -389,7 +384,8 @@ export function StepImages() {
       }
 
       // Step 2: Generate the image
-      const result = await generateImage(
+      const result = await callAction<{ imageKey: string }>(
+        "generateImage",
         projectData.id,
         scene.id,
         prompt,
@@ -398,7 +394,7 @@ export function StepImages() {
       );
 
       // Step 3: Get presigned URL for display
-      const url = await getImageUrl(result.imageKey);
+      const url = await callAction<string>("getImageUrl", result.imageKey);
 
       // Update the image URL
       setImageUrls((prev) => {
@@ -417,7 +413,7 @@ export function StepImages() {
       });
 
       // Persist selection
-      await selectImageVariant(scene.id, variantIndex).catch(() => {});
+      await callAction("selectImageVariant", scene.id, variantIndex).catch(() => {});
 
       setApiKeyMissing(false);
     } catch (err) {
@@ -449,7 +445,7 @@ export function StepImages() {
     });
     // Persist selection
     if (scene) {
-      await selectImageVariant(scene.id, variantIndex).catch(() => {});
+      await callAction("selectImageVariant", scene.id, variantIndex).catch(() => {});
     }
   }, [scenes]);
 

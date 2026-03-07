@@ -17,7 +17,7 @@ import {
 } from "@phosphor-icons/react";
 import { StepContent } from "@/components/wizard/step-content";
 import { useWizardStore, type SceneData } from "@/stores/wizard-store";
-import { saveScenes } from "@/lib/project-actions";
+import { callAction } from "@/lib/call-action";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -447,7 +447,7 @@ export function StepScript() {
         mood: s.mood,
       }));
 
-      const result = await saveScenes(projectId, scenesToSave);
+      const result = await callAction<{ success: boolean; error?: string; scenes?: unknown[] }>("saveScenes", projectId, scenesToSave);
 
       if (result.success) {
         setSaveSuccess(true);
@@ -469,7 +469,7 @@ export function StepScript() {
           })),
         });
       } else {
-        setSaveError(result.error);
+        setSaveError(result.error ?? "Failed to save scenes");
       }
     } catch {
       setSaveError("An unexpected error occurred while saving.");

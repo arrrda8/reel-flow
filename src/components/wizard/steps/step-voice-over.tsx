@@ -22,11 +22,7 @@ import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import {
-  listVoices,
-  generateVoiceOver,
-  getVoiceOverUrl,
-} from "@/lib/voice-actions";
+import { callAction } from "@/lib/call-action";
 
 // ---------------------------------------------------------------------------
 // Voice type from API
@@ -181,7 +177,7 @@ export function StepVoiceOver() {
       setVoicesError(null);
 
       try {
-        const result = await listVoices();
+        const result = await callAction<Array<{ id: string; name: string; category: string; labels: Record<string, string>; previewUrl: string }>>("listVoices");
         if (!cancelled) {
           setVoices(result);
         }
@@ -311,7 +307,8 @@ export function StepVoiceOver() {
       if (!scene.narrationText) continue;
 
       try {
-        const result = await generateVoiceOver(
+        const result = await callAction<{ success: boolean; audioKey: string }>(
+          "generateVoiceOver",
           projectData.id,
           scene.id,
           selectedVoice,
@@ -322,7 +319,7 @@ export function StepVoiceOver() {
         // Get a playable URL for the generated audio
         if (result.audioKey) {
           try {
-            const url = await getVoiceOverUrl(result.audioKey);
+            const url = await callAction<string>("getVoiceOverUrl", result.audioKey);
             setSceneAudioUrls((prev) => ({ ...prev, [i]: url }));
           } catch {
             // Non-critical: audio URL fetch failed but generation succeeded
