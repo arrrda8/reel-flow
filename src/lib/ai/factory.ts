@@ -51,7 +51,7 @@ export async function createAIProviderForUser(
 
 export async function getDecryptedKey(
   userId: string,
-  providerName: string,
+  providerName: "elevenlabs" | "gemini" | "kling" | "anthropic" | "openai" | "nanobanana" | "kie",
 ): Promise<string> {
   const { db } = await import("@/db");
   const { apiKeys } = await import("@/db/schema");

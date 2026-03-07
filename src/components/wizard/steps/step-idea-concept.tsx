@@ -788,7 +788,8 @@ export function StepIdeaConcept() {
       projectId,
       ideaText,
       projectData.platform,
-      projectData.targetDuration
+      projectData.targetDuration,
+      "de"
     );
 
     setIsGenerating(false);
