@@ -1,0 +1,77 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "create": "Create",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "search": "Search",
+    "noResults": "No results"
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "signUp": "Sign Up",
+    "email": "Email",
+    "password": "Password",
+    "name": "Name",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "orContinueWith": "Or continue with",
+    "invalidCredentials": "Invalid credentials",
+    "accountExists": "An account with this email already exists"
+  },
+  "dashboard": {
+    "title": "Your Projects",
+    "newProject": "New Project",
+    "noProjects": "No projects yet",
+    "createFirst": "Create your first faceless video project",
+    "projects": "{count, plural, =0 {No projects} =1 {1 project} other {# projects}}"
+  },
+  "project": {
+    "create": "Create Project",
+    "name": "Project Name",
+    "platform": "Platform",
+    "duration": "Duration",
+    "aspectRatio": "Aspect Ratio",
+    "status": {
+      "draft": "Draft",
+      "in_progress": "In Progress",
+      "rendering": "Rendering",
+      "completed": "Completed"
+    }
+  },
+  "wizard": {
+    "steps": {
+      "projectSetup": "Project Setup",
+      "ideaConcept": "Idea & Concept",
+      "script": "Script & Storyboard",
+      "voiceOver": "Voice Over",
+      "images": "Image Generation",
+      "video": "Video Generation",
+      "music": "Music & Sound",
+      "subtitles": "Subtitles",
+      "preview": "Preview",
+      "render": "Render & Export"
+    },
+    "saving": "Saving...",
+    "saved": "All changes saved",
+    "notSaved": "Not saved yet",
+    "startRender": "Start Render"
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "apiKeys": "API Keys",
+    "usage": "Usage & Costs",
+    "language": "Language",
+    "saveChanges": "Save Changes"
+  }
+}

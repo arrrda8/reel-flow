@@ -1,0 +1,77 @@
+{
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "create": "Erstellen",
+    "edit": "Bearbeiten",
+    "loading": "Laden...",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "back": "Zurück",
+    "next": "Weiter",
+    "previous": "Zurück",
+    "search": "Suchen",
+    "noResults": "Keine Ergebnisse"
+  },
+  "auth": {
+    "signIn": "Anmelden",
+    "signOut": "Abmelden",
+    "signUp": "Registrieren",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "name": "Name",
+    "forgotPassword": "Passwort vergessen?",
+    "noAccount": "Noch kein Konto?",
+    "hasAccount": "Bereits ein Konto?",
+    "orContinueWith": "Oder weiter mit",
+    "invalidCredentials": "Ungültige Anmeldedaten",
+    "accountExists": "Ein Konto mit dieser E-Mail existiert bereits"
+  },
+  "dashboard": {
+    "title": "Deine Projekte",
+    "newProject": "Neues Projekt",
+    "noProjects": "Noch keine Projekte",
+    "createFirst": "Erstelle dein erstes Faceless-Video-Projekt",
+    "projects": "{count, plural, =0 {Keine Projekte} =1 {1 Projekt} other {# Projekte}}"
+  },
+  "project": {
+    "create": "Projekt erstellen",
+    "name": "Projektname",
+    "platform": "Plattform",
+    "duration": "Dauer",
+    "aspectRatio": "Seitenverhältnis",
+    "status": {
+      "draft": "Entwurf",
+      "in_progress": "In Bearbeitung",
+      "rendering": "Wird gerendert",
+      "completed": "Abgeschlossen"
+    }
+  },
+  "wizard": {
+    "steps": {
+      "projectSetup": "Projekteinstellungen",
+      "ideaConcept": "Idee & Konzept",
+      "script": "Skript & Storyboard",
+      "voiceOver": "Sprachausgabe",
+      "images": "Bildgenerierung",
+      "video": "Videogenerierung",
+      "music": "Musik & Sound",
+      "subtitles": "Untertitel",
+      "preview": "Vorschau",
+      "render": "Rendern & Export"
+    },
+    "saving": "Speichere...",
+    "saved": "Alle Änderungen gespeichert",
+    "notSaved": "Noch nicht gespeichert",
+    "startRender": "Render starten"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "profile": "Profil",
+    "apiKeys": "API-Schlüssel",
+    "usage": "Nutzung & Kosten",
+    "language": "Sprache",
+    "saveChanges": "Änderungen speichern"
+  }
+}

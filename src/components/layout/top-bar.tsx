@@ -1,0 +1,133 @@
+"use client";
+
+import { useSession, signOut } from "next-auth/react";
+import Link from "next/link";
+import {
+  FilmReel,
+  GearSix,
+  SignOut,
+  Translate,
+} from "@phosphor-icons/react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+
+interface TopBarProps {
+  projectName?: string;
+}
+
+function getInitials(name?: string | null): string {
+  if (!name) return "?";
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+export function TopBar({ projectName }: TopBarProps) {
+  const { data: session } = useSession();
+
+  return (
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-6">
+      {/* Left: Logo */}
+      <Link href="/" className="flex items-center gap-2">
+        <FilmReel
+          weight="duotone"
+          className="size-7 text-primary"
+        />
+        <span className="font-heading text-lg font-semibold tracking-tight text-foreground">
+          ReelFlow
+        </span>
+      </Link>
+
+      {/* Center: Project name (optional) */}
+      {projectName && (
+        <div className="absolute left-1/2 -translate-x-1/2">
+          <span className="text-sm font-medium text-muted-foreground">
+            {projectName}
+          </span>
+        </div>
+      )}
+
+      {/* Right: Language switcher + User menu */}
+      <div className="flex items-center gap-2">
+        {/* Language Switcher */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm">
+              <Translate weight="duotone" className="size-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Language</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>
+              <span className="font-medium">DE</span>
+              <span className="text-muted-foreground">Deutsch</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <span className="font-medium">EN</span>
+              <span className="text-muted-foreground">English</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* User Menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              className="relative h-8 w-8 rounded-full"
+            >
+              <Avatar size="default">
+                <AvatarImage
+                  src={session?.user?.image ?? undefined}
+                  alt={session?.user?.name ?? "User"}
+                />
+                <AvatarFallback>
+                  {getInitials(session?.user?.name)}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium leading-none">
+                  {session?.user?.name ?? "User"}
+                </p>
+                <p className="text-xs leading-none text-muted-foreground">
+                  {session?.user?.email ?? ""}
+                </p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/settings" className="cursor-pointer">
+                <GearSix weight="duotone" className="size-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="cursor-pointer"
+            >
+              <SignOut weight="duotone" className="size-4" />
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
+  );
+}
