@@ -56,6 +56,8 @@ export const apiProviderEnum = pgEnum("api_provider", [
   "kling",
   "anthropic",
   "openai",
+  "nanobanana",
+  "kie",
 ]);
 
 export const localeEnum = pgEnum("locale", ["de", "en"]);
