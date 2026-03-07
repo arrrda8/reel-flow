@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   YoutubeLogo,
@@ -30,7 +30,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createProject, type CreateProjectResult } from "@/lib/project-actions";
 
 // ---------------------------------------------------------------------------
 // Platform presets
@@ -120,15 +119,15 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
   const [open, setOpen] = useState(false);
 
   // Form state
+  const [name, setName] = useState("");
   const [platform, setPlatform] = useState<Platform>("youtube");
   const [duration, setDuration] = useState("300");
   const [aspectRatio, setAspectRatio] = useState("16:9");
 
-  // Server action state
-  const [state, formAction, isPending] = useActionState<
-    CreateProjectResult | null,
-    FormData
-  >(createProject, null);
+  // Submission state
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string> | null>(null);
 
   // Handle platform change -> auto-set aspect ratio & duration
   const handlePlatformChange = useCallback((value: string) => {
@@ -143,19 +142,56 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
   const handleOpenChange = useCallback((isOpen: boolean) => {
     setOpen(isOpen);
     if (isOpen) {
+      setName("");
       setPlatform("youtube");
       setDuration("300");
       setAspectRatio("16:9");
+      setError(null);
+      setFieldErrors(null);
     }
   }, []);
 
-  // Handle success
-  useEffect(() => {
-    if (state?.success) {
-      setOpen(false);
-      router.push(`/project/${state.projectId}`);
-    }
-  }, [state, router]);
+  // Handle form submission via fetch (NOT server action)
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsPending(true);
+      setError(null);
+      setFieldErrors(null);
+
+      try {
+        const res = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            platform,
+            targetDuration: Number(duration),
+            aspectRatio,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          if (data.fieldErrors) {
+            setFieldErrors(data.fieldErrors);
+          } else {
+            setError(data.error || "Failed to create project");
+          }
+          return;
+        }
+
+        setOpen(false);
+        router.push(`/project/${data.projectId}`);
+      } catch {
+        setError("Something went wrong. Please try again.");
+      } finally {
+        setIsPending(false);
+      }
+    },
+    [name, platform, duration, aspectRatio, router]
+  );
 
   const PlatformIcon = platformPresets[platform].icon;
 
@@ -174,26 +210,23 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <form action={formAction} className="grid gap-5">
+        <form onSubmit={handleSubmit} className="grid gap-5">
           {/* Project Name */}
           <div className="grid gap-2">
             <Label htmlFor="project-name">Project Name</Label>
             <Input
               id="project-name"
-              name="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               placeholder="My Awesome Video"
               maxLength={500}
               required
               autoFocus
-              aria-invalid={
-                state && !state.success && state.fieldErrors?.name
-                  ? true
-                  : undefined
-              }
+              aria-invalid={fieldErrors?.name ? true : undefined}
             />
-            {state && !state.success && state.fieldErrors?.name && (
+            {fieldErrors?.name && (
               <p className="text-xs text-destructive">
-                {state.fieldErrors.name}
+                {fieldErrors.name}
               </p>
             )}
           </div>
@@ -202,7 +235,6 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
           <div className="grid gap-2">
             <Label htmlFor="platform-select">Platform</Label>
             <Select
-              name="platform"
               value={platform}
               onValueChange={handlePlatformChange}
             >
@@ -222,9 +254,9 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
                 })}
               </SelectContent>
             </Select>
-            {state && !state.success && state.fieldErrors?.platform && (
+            {fieldErrors?.platform && (
               <p className="text-xs text-destructive">
-                {state.fieldErrors.platform}
+                {fieldErrors.platform}
               </p>
             )}
           </div>
@@ -236,7 +268,6 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
               Target Duration
             </Label>
             <Select
-              name="targetDuration"
               value={duration}
               onValueChange={setDuration}
             >
@@ -251,9 +282,9 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
                 ))}
               </SelectContent>
             </Select>
-            {state && !state.success && state.fieldErrors?.targetDuration && (
+            {fieldErrors?.targetDuration && (
               <p className="text-xs text-destructive">
-                {state.fieldErrors.targetDuration}
+                {fieldErrors.targetDuration}
               </p>
             )}
           </div>
@@ -265,7 +296,6 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
               Aspect Ratio
             </Label>
             <Select
-              name="aspectRatio"
               value={aspectRatio}
               onValueChange={setAspectRatio}
             >
@@ -283,21 +313,19 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
             <p className="text-xs text-muted-foreground">
               Auto-selected for {platformPresets[platform].label}. Override if needed.
             </p>
-            {state && !state.success && state.fieldErrors?.aspectRatio && (
+            {fieldErrors?.aspectRatio && (
               <p className="text-xs text-destructive">
-                {state.fieldErrors.aspectRatio}
+                {fieldErrors.aspectRatio}
               </p>
             )}
           </div>
 
           {/* General error */}
-          {state &&
-            !state.success &&
-            !state.fieldErrors && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {state.error}
-              </div>
-            )}
+          {error && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
 
           {/* Preview pill */}
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-xs text-muted-foreground">

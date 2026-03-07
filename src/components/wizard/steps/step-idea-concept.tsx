@@ -28,17 +28,12 @@ import {
 } from "@phosphor-icons/react";
 import { StepContent } from "@/components/wizard/step-content";
 import { useWizardStore } from "@/stores/wizard-store";
-import {
-  updateProjectIdea,
-  updateProjectTreatment,
-  generateConcept,
-} from "@/lib/project-actions";
+import type { Treatment, ResearchReport } from "@/db/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import type { Treatment, ResearchReport } from "@/db/schema";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -783,27 +778,37 @@ export function StepIdeaConcept() {
       );
     }
 
-    // Call the actual server action
-    const result = await generateConcept(
-      projectId,
-      ideaText,
-      projectData.platform,
-      projectData.targetDuration,
-      "de"
-    );
-
-    setIsGenerating(false);
-
-    if (result.success) {
-      setTreatment(result.treatment);
-      setResearchReport(result.researchReport);
-      updateProjectData({
-        ideaText,
-        treatment: result.treatment,
-        researchReport: result.researchReport,
+    // Call API route instead of server action to avoid RSC refresh crash
+    try {
+      const res = await fetch("/api/generate-concept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          ideaText,
+          platform: projectData.platform,
+          duration: projectData.targetDuration,
+          locale: "de",
+        }),
       });
-    } else {
-      setGenerationError(result.error);
+
+      const result = await res.json();
+
+      if (result.success) {
+        setTreatment(result.treatment);
+        setResearchReport(result.researchReport);
+        updateProjectData({
+          ideaText,
+          treatment: result.treatment,
+          researchReport: result.researchReport,
+        });
+      } else {
+        setGenerationError(result.error || "Failed to generate concept");
+      }
+    } catch {
+      setGenerationError("Network error. Please try again.");
+    } finally {
+      setIsGenerating(false);
     }
   }, [projectId, projectData, ideaText, updateProjectData]);
 
@@ -825,15 +830,19 @@ export function StepIdeaConcept() {
     setSaving(true);
 
     try {
-      // Save idea text
-      await updateProjectIdea(projectId, ideaText);
+      // Save idea text, treatment, and research via API route
+      const res = await fetch("/api/project-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          ideaText,
+          treatment,
+          researchReport,
+        }),
+      });
 
-      // Save treatment and research
-      const result = await updateProjectTreatment(
-        projectId,
-        treatment,
-        researchReport
-      );
+      const result = await res.json();
 
       if (result.success) {
         updateProjectData({

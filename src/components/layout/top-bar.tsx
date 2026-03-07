@@ -9,7 +9,6 @@ import {
   SignOut,
   Translate,
 } from "@phosphor-icons/react";
-import { setLocale } from "@/lib/locale-actions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,8 +44,9 @@ export function TopBar({ projectName }: TopBarProps) {
     if (match) setCurrentLocale(match[1]);
   }, []);
 
-  async function handleLocaleChange(locale: "de" | "en") {
-    await setLocale(locale);
+  function handleLocaleChange(locale: "de" | "en") {
+    document.cookie = `locale=${locale}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+    setCurrentLocale(locale);
     router.refresh();
   }
 

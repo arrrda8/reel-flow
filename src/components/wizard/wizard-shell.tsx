@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useWizardStore, type ProjectData } from "@/stores/wizard-store";
 import { WizardStepRail } from "@/components/wizard/step-rail";
 import { WizardActionBar } from "@/components/wizard/action-bar";
@@ -14,6 +15,7 @@ import { StepMusic } from "@/components/wizard/steps/step-music";
 import { StepSubtitles } from "@/components/wizard/steps/step-subtitles";
 import { StepPreview } from "@/components/wizard/steps/step-preview";
 import { StepRender } from "@/components/wizard/steps/step-render";
+import { getProjectById } from "@/lib/project-actions";
 
 // ---------------------------------------------------------------------------
 // Step component registry
@@ -31,6 +33,65 @@ const STEP_COMPONENTS: Record<number, React.ComponentType> = {
   9: StepPreview,
   10: StepRender,
 };
+
+// ---------------------------------------------------------------------------
+// Wizard Shell Loader — loads project data client-side to avoid RSC crashes
+// ---------------------------------------------------------------------------
+
+interface WizardShellLoaderProps {
+  projectId: string;
+  children?: React.ReactNode;
+}
+
+export function WizardShellLoader({ projectId, children }: WizardShellLoaderProps) {
+  const router = useRouter();
+  const [project, setProject] = useState<ProjectData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadProject = useCallback(async () => {
+    try {
+      const result = await getProjectById(projectId);
+      if (!result.success) {
+        router.replace("/dashboard");
+        return;
+      }
+      // Serialize dates
+      setProject(JSON.parse(JSON.stringify(result.project)));
+    } catch {
+      setError("Failed to load project");
+    }
+  }, [projectId, router]);
+
+  useEffect(() => {
+    loadProject();
+  }, [loadProject]);
+
+  if (error) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <div className="text-center space-y-3">
+          <p className="text-sm text-destructive">{error}</p>
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return <WizardLoadingSkeleton />;
+  }
+
+  return (
+    <WizardShell project={project}>
+      {children}
+    </WizardShell>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Wizard shell
@@ -75,9 +136,6 @@ export function WizardShell({ project, children }: WizardShellProps) {
             <ActiveStepComponent />
           )}
         </div>
-
-        {/* Right: Future side panel placeholder */}
-        {/* This space is reserved for context-sensitive panels in future tasks */}
       </div>
 
       {/* Bottom: Action bar */}
