@@ -5,16 +5,15 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   House,
-  FolderOpen,
   GearSix,
   ShieldCheck,
   Plus,
   FilmReel,
 } from "@phosphor-icons/react";
+import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: House },
-  { href: "/projects", label: "Projekte", icon: FolderOpen },
   { href: "/settings", label: "Einstellungen", icon: GearSix },
 ];
 
@@ -41,13 +40,15 @@ export function Sidebar({ isAdmin }: SidebarProps) {
 
       {/* New Project Button */}
       <div className="p-3">
-        <Link
-          href="/projects/new"
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          <Plus weight="bold" className="size-4" />
-          Neues Projekt
-        </Link>
+        <CreateProjectDialog>
+          <button
+            type="button"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Plus weight="bold" className="size-4" />
+            Neues Projekt
+          </button>
+        </CreateProjectDialog>
       </div>
 
       {/* Navigation */}
