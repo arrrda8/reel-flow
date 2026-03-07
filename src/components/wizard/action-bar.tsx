@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { TOTAL_STEPS } from "@/lib/wizard-steps";
 import { useWizardStore } from "@/stores/wizard-store";
-import { updateProjectStep } from "@/lib/project-actions";
 
 // ---------------------------------------------------------------------------
 // Save status indicator
@@ -79,9 +78,14 @@ export function WizardActionBar() {
     setIsPending(true);
 
     try {
-      // Save current step progress to the database
+      // Save current step progress to the database via API route (not server action)
+      // to avoid Next.js automatic RSC refresh that crashes the layout
       const targetStep = isLastStep ? currentStep : currentStep + 1;
-      await updateProjectStep(projectId, targetStep);
+      await fetch("/api/project-step", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, step: targetStep }),
+      });
 
       // Mark current step as completed and move forward
       markStepCompleted(currentStep);
