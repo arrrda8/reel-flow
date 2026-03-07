@@ -1,24 +1,9 @@
-import { redirect } from "next/navigation";
-import { getProjectById } from "@/lib/project-actions";
-
-interface ProjectPageProps {
-  params: Promise<{ id: string }>;
-}
+export const dynamic = "force-dynamic";
 
 /**
- * The project index page simply redirects to the wizard.
- * The WizardShell (rendered via layout.tsx) will handle displaying
- * the correct step based on the project's currentStep from the store.
+ * The project page renders nothing — the layout's WizardShell handles
+ * displaying the correct step based on the project's currentStep.
  */
-export default async function ProjectPage({ params }: ProjectPageProps) {
-  const { id } = await params;
-  const result = await getProjectById(id);
-
-  if (!result.success) {
-    redirect("/dashboard");
-  }
-
-  // The layout already renders WizardShell with the step content,
-  // so this page just needs to return null. The shell handles everything.
+export default function ProjectPage() {
   return null;
 }
