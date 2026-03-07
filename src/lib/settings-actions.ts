@@ -14,7 +14,7 @@ import { encrypt, decrypt } from "@/lib/encryption";
 
 export type ApiKeyEntry = {
   id: string;
-  provider: "elevenlabs" | "gemini" | "kling" | "anthropic" | "openai";
+  provider: "elevenlabs" | "gemini" | "kling" | "anthropic" | "openai" | "nanobanana" | "kie";
   maskedKey: string;
   isValid: boolean;
   lastTestedAt: Date | null;
@@ -23,7 +23,7 @@ export type ApiKeyEntry = {
 
 export type CostEntry = {
   id: string;
-  provider: "elevenlabs" | "gemini" | "kling" | "anthropic" | "openai";
+  provider: "elevenlabs" | "gemini" | "kling" | "anthropic" | "openai" | "nanobanana" | "kie";
   operation: string;
   costCents: number;
   projectName: string | null;
@@ -60,7 +60,7 @@ const updateProfileSchema = z.object({
 });
 
 const addApiKeySchema = z.object({
-  provider: z.enum(["elevenlabs", "gemini", "kling", "anthropic", "openai"], {
+  provider: z.enum(["elevenlabs", "gemini", "kling", "anthropic", "openai", "nanobanana", "kie"], {
     message: "Please select a valid provider",
   }),
   key: z

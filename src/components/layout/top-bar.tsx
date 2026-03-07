@@ -1,13 +1,15 @@
 "use client";
 
 import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useLocale } from "next-intl";
 import Link from "next/link";
 import {
-  FilmReel,
   GearSix,
   SignOut,
   Translate,
 } from "@phosphor-icons/react";
+import { setLocale } from "@/lib/locale-actions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,28 +37,24 @@ function getInitials(name?: string | null): string {
 
 export function TopBar({ projectName }: TopBarProps) {
   const { data: session } = useSession();
+  const router = useRouter();
+  const currentLocale = useLocale();
+
+  async function handleLocaleChange(locale: "de" | "en") {
+    await setLocale(locale);
+    router.refresh();
+  }
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-6">
-      {/* Left: Logo */}
-      <Link href="/" className="flex items-center gap-2">
-        <FilmReel
-          weight="duotone"
-          className="size-7 text-primary"
-        />
-        <span className="font-heading text-lg font-semibold tracking-tight text-foreground">
-          ReelFlow
-        </span>
-      </Link>
-
-      {/* Center: Project name (optional) */}
-      {projectName && (
-        <div className="absolute left-1/2 -translate-x-1/2">
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-surface px-6">
+      {/* Left: Project name (optional) */}
+      <div>
+        {projectName && (
           <span className="text-sm font-medium text-muted-foreground">
             {projectName}
           </span>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Right: Language switcher + User menu */}
       <div className="flex items-center gap-2">
@@ -70,11 +68,17 @@ export function TopBar({ projectName }: TopBarProps) {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Language</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => handleLocaleChange("de")}
+              className={currentLocale === "de" ? "bg-accent" : ""}
+            >
               <span className="font-medium">DE</span>
               <span className="text-muted-foreground">Deutsch</span>
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => handleLocaleChange("en")}
+              className={currentLocale === "en" ? "bg-accent" : ""}
+            >
               <span className="font-medium">EN</span>
               <span className="text-muted-foreground">English</span>
             </DropdownMenuItem>

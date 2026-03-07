@@ -35,6 +35,7 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  ImageSquare,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { addApiKey, deleteApiKey, testApiKey } from "@/lib/settings-actions";
@@ -57,15 +58,15 @@ type ProviderMeta = {
 const PROVIDERS: Record<string, ProviderMeta> = {
   anthropic: {
     label: "Anthropic (Claude)",
-    description: "AI text generation",
+    description: "LLM text generation",
     colorClass: "text-orange-400",
     bgClass: "bg-orange-500/10",
     borderClass: "border-orange-500/20",
     icon: <Brain weight="duotone" className="size-5 text-orange-400" />,
   },
   openai: {
-    label: "OpenAI",
-    description: "Alternative AI provider",
+    label: "OpenAI (GPT)",
+    description: "LLM text generation",
     colorClass: "text-emerald-400",
     bgClass: "bg-emerald-500/10",
     borderClass: "border-emerald-500/20",
@@ -73,7 +74,7 @@ const PROVIDERS: Record<string, ProviderMeta> = {
   },
   gemini: {
     label: "Google Gemini",
-    description: "Image generation",
+    description: "LLM text generation",
     colorClass: "text-blue-400",
     bgClass: "bg-blue-500/10",
     borderClass: "border-blue-500/20",
@@ -87,8 +88,16 @@ const PROVIDERS: Record<string, ProviderMeta> = {
     borderClass: "border-cyan-500/20",
     icon: <Waveform weight="duotone" className="size-5 text-cyan-400" />,
   },
-  kling: {
-    label: "Kling AI",
+  nanobanana: {
+    label: "NanoBanana 2",
+    description: "Image generation",
+    colorClass: "text-yellow-400",
+    bgClass: "bg-yellow-500/10",
+    borderClass: "border-yellow-500/20",
+    icon: <ImageSquare weight="duotone" className="size-5 text-yellow-400" />,
+  },
+  kie: {
+    label: "kie.ai",
     description: "Video generation",
     colorClass: "text-pink-400",
     bgClass: "bg-pink-500/10",
@@ -97,7 +106,9 @@ const PROVIDERS: Record<string, ProviderMeta> = {
   },
 };
 
-const PROVIDER_ORDER = ["anthropic", "openai", "gemini", "elevenlabs", "kling"] as const;
+const LLM_PROVIDERS = ["anthropic", "openai", "gemini"] as const;
+const SPECIALIZED_PROVIDERS = ["elevenlabs", "nanobanana", "kie"] as const;
+const PROVIDER_ORDER = [...LLM_PROVIDERS, ...SPECIALIZED_PROVIDERS] as const;
 
 // ---------------------------------------------------------------------------
 // Component
@@ -200,14 +211,125 @@ export function ApiKeysTab({ apiKeys }: ApiKeysTabProps) {
     });
   }
 
+  function handleAddForProvider(provider: string) {
+    setNewProvider(provider);
+    setNewKey("");
+    setAddDialogOpen(true);
+  }
+
+  function renderProviderCard(provider: string, key: ApiKeyEntry | undefined) {
+    const meta = PROVIDERS[provider];
+    if (!meta) return null;
+
+    return (
+      <div
+        key={provider}
+        className={`flex items-center gap-4 rounded-xl border p-4 transition-colors ${
+          key
+            ? `border-border bg-card ${meta.borderClass}`
+            : "border-border/50 bg-card/50"
+        }`}
+      >
+        {/* Provider icon */}
+        <div
+          className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${meta.bgClass}`}
+        >
+          {meta.icon}
+        </div>
+
+        {/* Provider info */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-foreground">
+              {meta.label}
+            </span>
+            {key ? (
+              <Badge
+                variant="outline"
+                className={
+                  key.isValid
+                    ? "border-success/30 bg-success/10 text-success"
+                    : "border-destructive/30 bg-destructive/10 text-destructive"
+                }
+              >
+                {key.isValid ? (
+                  <CheckCircle weight="fill" className="mr-1 size-3" />
+                ) : (
+                  <XCircle weight="fill" className="mr-1 size-3" />
+                )}
+                {key.isValid ? "Valid" : "Invalid"}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">
+                Not configured
+              </Badge>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {meta.description}
+          </p>
+          {key && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span className="font-mono">{key.maskedKey}</span>
+              <span className="flex items-center gap-1">
+                <Clock weight="duotone" className="size-3" />
+                Tested: {formatDate(key.lastTestedAt)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        {key ? (
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleTest(key.id)}
+              disabled={testingKeyId === key.id}
+            >
+              {testingKeyId === key.id ? (
+                <SpinnerGap
+                  weight="bold"
+                  className="size-3.5 animate-spin"
+                />
+              ) : (
+                <Flask weight="duotone" className="size-3.5" />
+              )}
+              <span className="hidden sm:inline">Test</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openDeleteConfirm(key.id)}
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash weight="duotone" className="size-3.5" />
+              <span className="hidden sm:inline">Delete</span>
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleAddForProvider(provider)}
+          >
+            <Plus weight="bold" className="size-3.5" />
+            Add Key
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header with Add button */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-heading text-lg font-semibold">API Keys</h2>
           <p className="text-sm text-muted-foreground">
-            Manage your API keys for AI providers
+            Manage your API keys for AI providers. Keys are encrypted with AES-256-GCM.
           </p>
         </div>
 
@@ -290,103 +412,26 @@ export function ApiKeysTab({ apiKeys }: ApiKeysTabProps) {
         </Dialog>
       </div>
 
-      {/* Keys list */}
+      {/* LLM Providers */}
       <div className="space-y-3">
-        {PROVIDER_ORDER.map((provider) => {
-          const meta = PROVIDERS[provider];
-          const key = keysByProvider.get(provider);
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-foreground">LLM Providers</h3>
+          <p className="text-xs text-muted-foreground">
+            Choose one for script and text generation. Only one LLM key is needed.
+          </p>
+        </div>
+        {LLM_PROVIDERS.map((provider) => renderProviderCard(provider, keysByProvider.get(provider)))}
+      </div>
 
-          return (
-            <div
-              key={provider}
-              className={`flex items-center gap-4 rounded-xl border p-4 transition-colors ${
-                key
-                  ? `border-border bg-card ${meta.borderClass}`
-                  : "border-border/50 bg-card/50"
-              }`}
-            >
-              {/* Provider icon */}
-              <div
-                className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${meta.bgClass}`}
-              >
-                {meta.icon}
-              </div>
-
-              {/* Provider info */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-foreground">
-                    {meta.label}
-                  </span>
-                  {key && (
-                    <Badge
-                      variant="outline"
-                      className={
-                        key.isValid
-                          ? "border-success/30 bg-success/10 text-success"
-                          : "border-destructive/30 bg-destructive/10 text-destructive"
-                      }
-                    >
-                      {key.isValid ? (
-                        <CheckCircle weight="fill" className="mr-1 size-3" />
-                      ) : (
-                        <XCircle weight="fill" className="mr-1 size-3" />
-                      )}
-                      {key.isValid ? "Valid" : "Invalid"}
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {meta.description}
-                </p>
-                {key && (
-                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span className="font-mono">{key.maskedKey}</span>
-                    <span className="flex items-center gap-1">
-                      <Clock weight="duotone" className="size-3" />
-                      Tested: {formatDate(key.lastTestedAt)}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Actions */}
-              {key ? (
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleTest(key.id)}
-                    disabled={testingKeyId === key.id}
-                  >
-                    {testingKeyId === key.id ? (
-                      <SpinnerGap
-                        weight="bold"
-                        className="size-3.5 animate-spin"
-                      />
-                    ) : (
-                      <Flask weight="duotone" className="size-3.5" />
-                    )}
-                    <span className="hidden sm:inline">Test</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openDeleteConfirm(key.id)}
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash weight="duotone" className="size-3.5" />
-                    <span className="hidden sm:inline">Delete</span>
-                  </Button>
-                </div>
-              ) : (
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  Not configured
-                </span>
-              )}
-            </div>
-          );
-        })}
+      {/* Specialized Providers */}
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-foreground">Specialized Providers</h3>
+          <p className="text-xs text-muted-foreground">
+            Each serves a specific function in the pipeline.
+          </p>
+        </div>
+        {SPECIALIZED_PROVIDERS.map((provider) => renderProviderCard(provider, keysByProvider.get(provider)))}
       </div>
 
       {/* Delete Confirmation Dialog */}

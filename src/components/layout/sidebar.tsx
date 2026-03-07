@@ -32,7 +32,7 @@ export function Sidebar({ isAdmin }: SidebarProps) {
   return (
     <aside className="flex h-full w-56 shrink-0 flex-col border-r border-border bg-surface/50">
       {/* Logo */}
-      <div className="flex h-14 items-center gap-2 border-b border-border px-4">
+      <div className="flex h-12 items-center gap-2 border-b border-border px-4">
         <FilmReel weight="duotone" className="size-6 text-primary" />
         <span className="font-heading text-lg font-bold tracking-tight">
           ReelFlow
