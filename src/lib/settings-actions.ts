@@ -3,7 +3,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/db/index";
 import { users, apiKeys, costLogs, projects } from "@/db/schema";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, gte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { encrypt, decrypt } from "@/lib/encryption";
@@ -410,7 +410,7 @@ export async function getCostSummary(): Promise<CostSummary> {
     .where(
       and(
         eq(costLogs.userId, session.user.id),
-        sql`${costLogs.createdAt} >= ${startOfMonth}`
+        gte(costLogs.createdAt, startOfMonth)
       )
     );
 
