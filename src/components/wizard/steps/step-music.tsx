@@ -409,12 +409,7 @@ export function StepMusic() {
               <Button
                 size="sm"
                 onClick={handleApply}
-                className={cn(
-                  "gap-1.5",
-                  "bg-gradient-to-r from-primary to-secondary text-white",
-                  "hover:from-primary/90 hover:to-secondary/90",
-                  "shadow-lg shadow-primary/20"
-                )}
+                className="gap-1.5"
               >
                 <Check weight="bold" className="size-3.5" />
                 Apply Music Settings

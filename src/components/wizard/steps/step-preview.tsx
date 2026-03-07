@@ -63,13 +63,13 @@ function TimelineMarker({
 // Scene Thumbnail
 // ---------------------------------------------------------------------------
 
-const THUMB_GRADIENTS = [
-  "from-violet-600/40 via-indigo-500/30 to-blue-600/40",
-  "from-rose-600/40 via-pink-500/30 to-purple-600/40",
-  "from-amber-600/40 via-orange-500/30 to-red-600/40",
-  "from-emerald-600/40 via-teal-500/30 to-cyan-600/40",
-  "from-sky-600/40 via-blue-500/30 to-indigo-600/40",
-  "from-fuchsia-600/40 via-purple-500/30 to-violet-600/40",
+const THUMB_COLORS = [
+  "bg-slate-700/50",
+  "bg-zinc-700/50",
+  "bg-neutral-700/50",
+  "bg-stone-700/50",
+  "bg-gray-700/50",
+  "bg-slate-600/50",
 ];
 
 function SceneThumbnail({
@@ -85,7 +85,7 @@ function SceneThumbnail({
   isActive: boolean;
   onClick: () => void;
 }) {
-  const gradient = THUMB_GRADIENTS[index % THUMB_GRADIENTS.length];
+  const thumbColor = THUMB_COLORS[index % THUMB_COLORS.length];
 
   return (
     <button
@@ -101,8 +101,8 @@ function SceneThumbnail({
       {/* Thumbnail */}
       <div
         className={cn(
-          "relative aspect-video w-20 shrink-0 overflow-hidden rounded-md bg-gradient-to-br",
-          gradient
+          "relative aspect-video w-20 shrink-0 overflow-hidden rounded-md",
+          thumbColor
         )}
       >
         <div className="absolute inset-0 flex items-center justify-center">
@@ -203,17 +203,17 @@ export function StepPreview() {
             <div className="flex justify-center">
               <div
                 className={cn(
-                  "relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-slate-900 via-gray-900 to-zinc-900",
+                  "relative overflow-hidden rounded-xl border border-border bg-slate-900",
                   isPortrait
                     ? "aspect-[9/16] max-h-[500px] w-full max-w-[280px]"
                     : "aspect-video w-full"
                 )}
               >
-                {/* Scene gradient background */}
+                {/* Scene background */}
                 <div
                   className={cn(
-                    "absolute inset-0 bg-gradient-to-br transition-all duration-500",
-                    THUMB_GRADIENTS[activeScene % THUMB_GRADIENTS.length]
+                    "absolute inset-0 transition-all duration-500",
+                    THUMB_COLORS[activeScene % THUMB_COLORS.length]
                   )}
                 />
 
@@ -393,12 +393,7 @@ export function StepPreview() {
             {/* Approve button */}
             <Button
               onClick={handleApprove}
-              className={cn(
-                "w-full gap-1.5",
-                "bg-gradient-to-r from-primary to-secondary text-white",
-                "hover:from-primary/90 hover:to-secondary/90",
-                "shadow-lg shadow-primary/20"
-              )}
+              className="w-full gap-1.5"
             >
               <Check weight="bold" className="size-3.5" />
               Approve & Continue to Render

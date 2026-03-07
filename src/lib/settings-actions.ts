@@ -477,6 +477,31 @@ export type AdminStats = {
   }[];
 };
 
+export type DbHealthStatus = {
+  connected: boolean;
+  latencyMs: number;
+  error?: string;
+};
+
+export async function getDbHealth(): Promise<DbHealthStatus> {
+  const admin = await isAdmin();
+  if (!admin) {
+    return { connected: false, latencyMs: 0, error: "Unauthorized" };
+  }
+
+  const start = Date.now();
+  try {
+    await db.select({ one: sql<number>`1` }).from(users).limit(1);
+    return { connected: true, latencyMs: Date.now() - start };
+  } catch (err) {
+    return {
+      connected: false,
+      latencyMs: Date.now() - start,
+      error: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
 export async function getAdminStats(): Promise<AdminStats | null> {
   const session = await auth();
   if (!session?.user?.email) return null;

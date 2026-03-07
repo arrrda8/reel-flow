@@ -241,12 +241,7 @@ export function StepRender() {
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <Button
                 size="lg"
-                className={cn(
-                  "gap-2",
-                  "bg-gradient-to-r from-primary to-secondary text-white",
-                  "hover:from-primary/90 hover:to-secondary/90",
-                  "shadow-lg shadow-primary/20"
-                )}
+                className="gap-2"
               >
                 <DownloadSimple weight="duotone" className="size-5" />
                 Download Video
@@ -541,12 +536,7 @@ export function StepRender() {
               <Button
                 size="lg"
                 onClick={handleStartRender}
-                className={cn(
-                  "gap-2 px-10",
-                  "bg-gradient-to-r from-primary to-secondary text-white",
-                  "hover:from-primary/90 hover:to-secondary/90",
-                  "shadow-lg shadow-primary/20"
-                )}
+                className="gap-2 px-10"
               >
                 <Export weight="duotone" className="size-5" />
                 Start Render

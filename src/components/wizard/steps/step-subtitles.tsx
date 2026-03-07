@@ -348,12 +348,12 @@ export function StepSubtitles() {
 
             <div
               className={cn(
-                "relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-slate-900 via-gray-900 to-zinc-900",
+                "relative overflow-hidden rounded-xl border border-border bg-slate-900",
                 isPortrait ? "aspect-[9/16] max-h-[500px] mx-auto max-w-[280px]" : "aspect-video"
               )}
             >
               {/* Background mock video content */}
-              <div className="absolute inset-0 bg-gradient-to-br from-violet-900/20 via-transparent to-cyan-900/20" />
+              <div className="absolute inset-0 bg-slate-800/30" />
               <div className="absolute inset-0 flex">
                 <SubtitlePreview
                   fontFamily={fontFamily}
@@ -403,12 +403,7 @@ export function StepSubtitles() {
           <Button
             size="sm"
             onClick={handleApply}
-            className={cn(
-              "gap-1.5",
-              "bg-gradient-to-r from-primary to-secondary text-white",
-              "hover:from-primary/90 hover:to-secondary/90",
-              "shadow-lg shadow-primary/20"
-            )}
+            className="gap-1.5"
           >
             <Check weight="bold" className="size-3.5" />
             Apply to All Scenes

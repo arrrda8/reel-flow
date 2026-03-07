@@ -51,7 +51,7 @@ function StepItem({ step, status, isLast, onNavigate }: StepItemProps) {
             aria-current={isCurrent ? "step" : undefined}
             className={cn(
               "group relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200",
-              isCurrent && "bg-primary/15 text-primary shadow-[0_0_20px_rgba(139,92,246,0.15)]",
+              isCurrent && "bg-primary/15 text-primary",
               isCompleted && "bg-success/10 text-success hover:bg-success/20",
               isAvailable && "text-muted-foreground hover:bg-primary/10 hover:text-primary",
               isLocked && "cursor-not-allowed text-muted-foreground/30"
