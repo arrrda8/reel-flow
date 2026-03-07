@@ -557,7 +557,7 @@ export async function saveScenes(
 }
 
 // ---------------------------------------------------------------------------
-// generateConcept - Mock AI concept generation (Step 2)
+// generateConcept - AI concept generation (Step 2)
 // ---------------------------------------------------------------------------
 
 export type GenerateConceptResult =
@@ -572,8 +572,8 @@ export async function generateConcept(
   projectId: string,
   ideaText: string,
   platform: string,
-  targetDuration: number,
-  _locale?: string
+  duration: number,
+  locale: string,
 ): Promise<GenerateConceptResult> {
   const session = await auth();
   if (!session?.user?.id) {
@@ -584,141 +584,62 @@ export async function generateConcept(
     return { success: false, error: "Please enter a video idea first" };
   }
 
-  // Verify project ownership
-  const project = await db.query.projects.findFirst({
-    where: and(eq(projects.id, projectId), eq(projects.userId, session.user.id)),
-  });
-
-  if (!project) {
-    return { success: false, error: "Project not found" };
-  }
-
-  // --- Mock AI generation ---
-  // In the future, this will call the actual AI provider (Anthropic, OpenAI, etc.)
-  // For now, we generate realistic mock data based on the idea text.
-
-  const ideaTrimmed = ideaText.trim();
-  const shortIdea =
-    ideaTrimmed.length > 80
-      ? ideaTrimmed.substring(0, 80) + "..."
-      : ideaTrimmed;
-
-  // Determine number of scenes based on target duration
-  let sceneCount = 3;
-  if (targetDuration <= 30) {
-    sceneCount = 3;
-  } else if (targetDuration <= 60) {
-    sceneCount = 4;
-  } else if (targetDuration <= 120) {
-    sceneCount = 5;
-  } else if (targetDuration <= 300) {
-    sceneCount = 7;
-  } else {
-    sceneCount = 10;
-  }
-
-  // Platform-specific CTA
-  const platformCtas: Record<string, string> = {
-    youtube: "Like, subscribe, and hit the notification bell for more content like this!",
-    shorts: "Follow for more quick tips! Drop a comment below.",
-    reels: "Save this for later and share with someone who needs to see this!",
-    tiktok: "Follow for Part 2! Comment what you want to see next.",
-    custom: "Thanks for watching! Stay tuned for more.",
-  };
-
-  // Generate mock scenes
-  const mockScenes: { narration: string; visual: string }[] = [];
-
-  const sceneTemplates = [
-    {
-      narration: `Did you know that ${shortIdea.toLowerCase()} is one of the most searched topics right now? Let me break it down for you.`,
-      visual: "Dynamic text animation with topic keywords flying in, dark gradient background with glowing accents.",
-    },
-    {
-      narration: `The first thing you need to understand is the core concept. This is what separates those who succeed from those who don't.`,
-      visual: "Split-screen comparison showing before and after, clean minimal design with iconography.",
-    },
-    {
-      narration: `Here's what the research shows -- and this surprised even me when I first discovered it.`,
-      visual: "Animated statistics and data points appearing on screen, infographic style with charts.",
-    },
-    {
-      narration: `Now let's look at a real-world example that puts everything into perspective.`,
-      visual: "Case study imagery with highlighted quotes, documentary-style footage overlay.",
-    },
-    {
-      narration: `The key takeaway here is simple but powerful: small consistent actions lead to extraordinary results.`,
-      visual: "Progress timeline animation showing growth, motivational imagery with warm tones.",
-    },
-    {
-      narration: `But wait -- there's a common mistake that almost everyone makes when starting out.`,
-      visual: "Red warning icon with cautionary text, dramatic lighting shift to emphasize the point.",
-    },
-    {
-      narration: `Experts in the field recommend this approach because it has been proven time and time again.`,
-      visual: "Expert quote cards with professional headshots, trust indicators and credentials displayed.",
-    },
-    {
-      narration: `Let me share the step-by-step process that you can start implementing today.`,
-      visual: "Numbered step list appearing one by one, clean instructional layout with checkmarks.",
-    },
-    {
-      narration: `The results speak for themselves. People who apply this method see improvements within weeks.`,
-      visual: "Before and after transformation visuals, success metrics displayed with upward trending graphs.",
-    },
-    {
-      narration: `So what are you waiting for? The best time to start is right now.`,
-      visual: "Call-to-action screen with bold typography, energetic colors and subscribe/follow buttons.",
-    },
-  ];
-
-  for (let i = 0; i < sceneCount; i++) {
-    mockScenes.push(sceneTemplates[i % sceneTemplates.length]);
-  }
-
-  const researchReport: ResearchReport = {
-    topic: ideaTrimmed,
-    keyPoints: [
-      `${shortIdea} is trending across social media with growing audience interest`,
-      "Research shows that visual storytelling increases engagement by up to 65%",
-      `The target demographic for ${platform} responds best to concise, value-driven content`,
-      "Hook-driven intros increase viewer retention by 40% in the first 5 seconds",
-      "Including actionable takeaways improves share rates significantly",
-    ],
-    sources: [
-      "Social Media Trends Report 2025",
-      "Content Marketing Institute Research",
-      "Platform Creator Analytics Dashboard",
-    ],
-    summary: `This concept explores "${shortIdea}" through a ${sceneCount}-scene structure optimized for ${platform}. The content is designed to hook viewers immediately, deliver value through a clear narrative arc, and end with a strong call-to-action. The estimated runtime of ${targetDuration} seconds allows for a balanced pace that maintains engagement throughout.`,
-  };
-
-  const treatment: Treatment = {
-    title: ideaTrimmed.length > 100 ? ideaTrimmed.substring(0, 100) : ideaTrimmed,
-    hook: `Stop scrolling -- this will change the way you think about ${shortIdea.toLowerCase()}.`,
-    scenes: mockScenes,
-    cta: platformCtas[platform] ?? platformCtas.custom,
-  };
-
-  // Save to database
   try {
+    const [project] = await db
+      .select({ llmProvider: projects.llmProvider })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.userId, session.user.id)))
+      .limit(1);
+
+    if (!project) {
+      return { success: false, error: "Project not found" };
+    }
+
+    const { createAIProviderForUser } = await import("@/lib/ai");
+    const { getResearchPrompt, getConceptPrompt } = await import("@/lib/ai/prompts/concept");
+
+    const providerType = (project.llmProvider ?? "anthropic") as "anthropic" | "openai" | "gemini";
+    const provider = await createAIProviderForUser(session.user.id, providerType);
+
+    // Step 1: Research
+    const researchSchema = z.object({
+      topic: z.string(),
+      keyPoints: z.array(z.string()),
+      sources: z.array(z.string()),
+      summary: z.string(),
+    });
+
+    const researchPrompt = getResearchPrompt(ideaText, platform, locale);
+    const researchReport = await provider.generateStructured(researchPrompt, researchSchema);
+
+    // Step 2: Concept/Treatment
+    const treatmentSchema = z.object({
+      title: z.string(),
+      hook: z.string(),
+      scenes: z.array(z.object({
+        narration: z.string(),
+        visual: z.string(),
+      })),
+      cta: z.string(),
+    });
+
+    const conceptPrompt = getConceptPrompt(ideaText, platform, duration, locale, researchReport.summary);
+    const treatment = await provider.generateStructured(conceptPrompt, treatmentSchema);
+
+    // Save to DB
     await db
       .update(projects)
       .set({
-        ideaText: ideaTrimmed,
+        ideaText,
         treatment,
         researchReport,
         updatedAt: new Date(),
       })
-      .where(
-        and(eq(projects.id, projectId), eq(projects.userId, session.user.id))
-      );
-  } catch {
-    return {
-      success: false,
-      error: "Failed to save generated concept.",
-    };
-  }
+      .where(eq(projects.id, projectId));
 
-  return { success: true, treatment, researchReport };
+    return { success: true, treatment, researchReport };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to generate concept.";
+    return { success: false, error: message };
+  }
 }
