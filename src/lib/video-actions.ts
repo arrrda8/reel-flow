@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { apiKeys, projects, scenes, videoClips } from "@/db/schema";
+import { apiKeys, projects, scenes, videoClips, sceneImages } from "@/db/schema";
 import { decrypt } from "@/lib/encryption";
 import { uploadFile, getPresignedUrl } from "@/lib/storage";
 import { eq, and } from "drizzle-orm";
@@ -106,4 +106,92 @@ export async function generateVideo(
     .returning({ id: videoClips.id });
 
   return { success: true, videoKey: key, videoId: inserted.id };
+}
+
+// ---------------------------------------------------------------------------
+// getSceneImageKeys – fetch selected image key per scene for a project
+// ---------------------------------------------------------------------------
+
+export interface SceneImageInfo {
+  sceneId: string;
+  imageKey: string | null;
+}
+
+export async function getSceneImageKeys(
+  projectId: string
+): Promise<SceneImageInfo[]> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  // Verify ownership
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(
+      and(eq(projects.id, projectId), eq(projects.userId, session.user.id))
+    )
+    .limit(1);
+  if (!project) throw new Error("Project not found");
+
+  // Get all scenes for the project
+  const projectScenes = await db
+    .select({ id: scenes.id })
+    .from(scenes)
+    .where(eq(scenes.projectId, projectId));
+
+  const result: SceneImageInfo[] = [];
+
+  for (const scene of projectScenes) {
+    // Get the selected image (or first completed one)
+    const [img] = await db
+      .select({ fileUrl: sceneImages.fileUrl })
+      .from(sceneImages)
+      .where(
+        and(
+          eq(sceneImages.sceneId, scene.id),
+          eq(sceneImages.isSelected, true),
+          eq(sceneImages.status, "completed")
+        )
+      )
+      .limit(1);
+
+    result.push({
+      sceneId: scene.id,
+      imageKey: img?.fileUrl ?? null,
+    });
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// getVideoPresignedUrl – get a presigned URL for a video stored in MinIO
+// ---------------------------------------------------------------------------
+
+export async function getVideoPresignedUrl(
+  videoKey: string
+): Promise<string> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  return getPresignedUrl(videoKey, 3600);
+}
+
+// ---------------------------------------------------------------------------
+// checkKieApiKey – check if user has a kie.ai API key configured
+// ---------------------------------------------------------------------------
+
+export async function checkKieApiKey(): Promise<boolean> {
+  const session = await auth();
+  if (!session?.user?.id) return false;
+
+  const [keyRow] = await db
+    .select({ id: apiKeys.id })
+    .from(apiKeys)
+    .where(
+      and(eq(apiKeys.userId, session.user.id), eq(apiKeys.provider, "kie"))
+    )
+    .limit(1);
+
+  return !!keyRow;
 }

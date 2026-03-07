@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import {
   FilmStrip,
   Play,
@@ -8,8 +8,9 @@ import {
   Check,
   SpinnerGap,
   Timer,
-  Image,
+  Image as ImageIcon,
   VideoCamera,
+  Warning,
 } from "@phosphor-icons/react";
 import { StepContent } from "@/components/wizard/step-content";
 import { useWizardStore } from "@/stores/wizard-store";
@@ -17,52 +18,50 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-
-// ---------------------------------------------------------------------------
-// Gradient placeholders for video thumbnails
-// ---------------------------------------------------------------------------
-
-const VIDEO_GRADIENTS = [
-  "from-violet-900/60 via-indigo-800/40 to-blue-900/60",
-  "from-rose-900/60 via-pink-800/40 to-purple-900/60",
-  "from-amber-900/60 via-orange-800/40 to-red-900/60",
-  "from-emerald-900/60 via-teal-800/40 to-cyan-900/60",
-  "from-sky-900/60 via-blue-800/40 to-indigo-900/60",
-  "from-fuchsia-900/60 via-purple-800/40 to-violet-900/60",
-];
-
-const IMAGE_GRADIENTS = [
-  "from-violet-600/40 via-indigo-500/30 to-blue-600/40",
-  "from-rose-600/40 via-pink-500/30 to-purple-600/40",
-  "from-amber-600/40 via-orange-500/30 to-red-600/40",
-  "from-emerald-600/40 via-teal-500/30 to-cyan-600/40",
-  "from-sky-600/40 via-blue-500/30 to-indigo-600/40",
-  "from-fuchsia-600/40 via-purple-500/30 to-violet-600/40",
-];
+import {
+  listKieModels,
+  generateVideo,
+  getSceneImageKeys,
+  getVideoPresignedUrl,
+  checkKieApiKey,
+} from "@/lib/video-actions";
+import type { KieModel } from "@/lib/ai/providers/kie";
 
 // ---------------------------------------------------------------------------
 // Scene Video Row
 // ---------------------------------------------------------------------------
 
-type VideoStatus = "idle" | "processing" | "completed";
+type VideoStatus = "idle" | "processing" | "completed" | "error";
 
 function SceneVideoRow({
   sceneIndex,
   narrationText,
   estimatedDuration,
   status,
+  errorMessage,
+  imageUrl,
+  videoUrl,
+  hasImage,
   onGenerate,
 }: {
   sceneIndex: number;
   narrationText: string | null;
   estimatedDuration: number | null;
   status: VideoStatus;
+  errorMessage: string | null;
+  imageUrl: string | null;
+  videoUrl: string | null;
+  hasImage: boolean;
   onGenerate: () => void;
 }) {
-  const imgGradient = IMAGE_GRADIENTS[sceneIndex % IMAGE_GRADIENTS.length];
-  const vidGradient = VIDEO_GRADIENTS[sceneIndex % VIDEO_GRADIENTS.length];
-
   return (
     <div className="rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/20">
       <div className="flex items-center gap-2 mb-3">
@@ -81,22 +80,28 @@ function SceneVideoRow({
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Source image placeholder */}
+        {/* Source image */}
         <div className="relative w-32 shrink-0">
-          <div
-            className={cn(
-              "aspect-video rounded-lg bg-gradient-to-br overflow-hidden",
-              imgGradient
+          <div className="aspect-video rounded-lg overflow-hidden bg-surface border border-border">
+            {imageUrl ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={imageUrl}
+                  alt={`Scene ${sceneIndex + 1} source`}
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+                <div className="absolute bottom-1 left-1">
+                  <Badge className="bg-black/50 text-white text-[10px] backdrop-blur-sm border-0 px-1.5 py-0">
+                    Image
+                  </Badge>
+                </div>
+              </>
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <ImageIcon weight="duotone" className="size-5 text-muted-foreground/50" />
+              </div>
             )}
-          >
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Image weight="duotone" className="size-5 text-white/50" />
-            </div>
-            <div className="absolute bottom-1 left-1">
-              <Badge className="bg-black/50 text-white text-[10px] backdrop-blur-sm border-0 px-1.5 py-0">
-                Image
-              </Badge>
-            </div>
           </div>
         </div>
 
@@ -110,7 +115,9 @@ function SceneVideoRow({
                 ? "text-success"
                 : status === "processing"
                   ? "text-primary animate-pulse"
-                  : "text-muted-foreground"
+                  : status === "error"
+                    ? "text-destructive"
+                    : "text-muted-foreground"
             )}
           />
           {status === "processing" && (
@@ -118,18 +125,25 @@ function SceneVideoRow({
           )}
         </div>
 
-        {/* Video output placeholder */}
+        {/* Video output */}
         <div className="relative flex-1 min-w-0">
           <div
             className={cn(
               "aspect-video rounded-lg overflow-hidden",
               status === "completed"
-                ? `bg-gradient-to-br ${vidGradient}`
+                ? "bg-black"
                 : "bg-surface border border-dashed border-border"
             )}
           >
-            {status === "completed" ? (
+            {status === "completed" && videoUrl ? (
               <>
+                <video
+                  src={videoUrl}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm">
                     <Play weight="fill" className="size-5 text-white ml-0.5" />
@@ -154,15 +168,39 @@ function SceneVideoRow({
                   <span className="text-xs text-muted-foreground">Processing...</span>
                 </div>
               </div>
+            ) : status === "error" ? (
+              <div className="flex h-full items-center justify-center">
+                <div className="flex flex-col items-center gap-2">
+                  <Warning weight="duotone" className="size-5 text-destructive" />
+                  <span className="text-xs text-destructive">{errorMessage || "Error"}</span>
+                  {hasImage && (
+                    <button
+                      type="button"
+                      onClick={onGenerate}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              </div>
             ) : (
               <div className="flex h-full items-center justify-center">
                 <button
                   type="button"
                   onClick={onGenerate}
-                  className="flex flex-col items-center gap-1.5 text-muted-foreground transition-colors hover:text-primary"
+                  disabled={!hasImage}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 transition-colors",
+                    hasImage
+                      ? "text-muted-foreground hover:text-primary"
+                      : "text-muted-foreground/40 cursor-not-allowed"
+                  )}
                 >
                   <VideoCamera weight="duotone" className="size-5" />
-                  <span className="text-xs font-medium">Generate Video</span>
+                  <span className="text-xs font-medium">
+                    {hasImage ? "Generate Video" : "No source image"}
+                  </span>
                 </button>
               </div>
             )}
@@ -184,28 +222,187 @@ export function StepVideo() {
   const scenes = projectData?.scenes ?? [];
 
   const [statuses, setStatuses] = useState<Map<number, VideoStatus>>(new Map());
+  const [errors, setErrors] = useState<Map<number, string>>(new Map());
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(0);
+
+  // Model selection
+  const [models, setModels] = useState<KieModel[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [isLoadingModels, setIsLoadingModels] = useState(true);
+
+  // API key check
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+
+  // Scene image keys (from DB)
+  const [imageKeys, setImageKeys] = useState<Map<string, string>>(new Map());
+  const [imageUrls, setImageUrls] = useState<Map<string, string>>(new Map());
+  const [hasNoImages, setHasNoImages] = useState(false);
+
+  // Video URLs (presigned from MinIO)
+  const [videoUrls, setVideoUrls] = useState<Map<number, string>>(new Map());
+  // Video keys stored after generation
+  const [videoKeys, setVideoKeys] = useState<Map<number, string>>(new Map());
+
+  // Ref to avoid re-running effects
+  const initRef = useRef(false);
+
+  // --- Load API key status + models + scene images on mount ---
+  useEffect(() => {
+    if (!projectData?.id || initRef.current) return;
+    initRef.current = true;
+
+    const init = async () => {
+      // Check API key
+      const apiKeyExists = await checkKieApiKey();
+      setHasApiKey(apiKeyExists);
+
+      if (apiKeyExists) {
+        // Load models
+        try {
+          const kieModels = await listKieModels();
+          setModels(kieModels);
+          if (kieModels.length > 0) {
+            setSelectedModel(kieModels[0].id);
+          }
+        } catch {
+          // Models couldn't load – user will see empty select
+        }
+      }
+
+      // Load scene image keys
+      try {
+        const sceneImageInfos = await getSceneImageKeys(projectData.id);
+        const keyMap = new Map<string, string>();
+        const urlMap = new Map<string, string>();
+        let anyImage = false;
+
+        for (const info of sceneImageInfos) {
+          if (info.imageKey) {
+            keyMap.set(info.sceneId, info.imageKey);
+            anyImage = true;
+
+            // Get presigned URL for display
+            try {
+              const url = await getVideoPresignedUrl(info.imageKey);
+              urlMap.set(info.sceneId, url);
+            } catch {
+              // Image URL fetch failed – non-critical
+            }
+          }
+        }
+
+        setImageKeys(keyMap);
+        setImageUrls(urlMap);
+        setHasNoImages(!anyImage);
+      } catch {
+        setHasNoImages(true);
+      }
+
+      setIsLoadingModels(false);
+    };
+
+    init();
+  }, [projectData?.id]);
 
   const getStatus = (index: number): VideoStatus =>
     statuses.get(index) ?? "idle";
 
-  const handleGenerate = useCallback(async (sceneIndex: number) => {
-    setStatuses((prev) => {
-      const next = new Map(prev);
-      next.set(sceneIndex, "processing");
-      return next;
-    });
+  const handleGenerate = useCallback(
+    async (sceneIndex: number) => {
+      const scene = scenes[sceneIndex];
+      if (!scene || !projectData?.id) return;
 
-    // Mock processing delay
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+      const imageKey = imageKeys.get(scene.id);
+      if (!imageKey) {
+        setErrors((prev) => {
+          const next = new Map(prev);
+          next.set(sceneIndex, "No source image available");
+          return next;
+        });
+        setStatuses((prev) => {
+          const next = new Map(prev);
+          next.set(sceneIndex, "error");
+          return next;
+        });
+        return;
+      }
 
-    setStatuses((prev) => {
-      const next = new Map(prev);
-      next.set(sceneIndex, "completed");
-      return next;
-    });
-  }, []);
+      if (!selectedModel) {
+        setErrors((prev) => {
+          const next = new Map(prev);
+          next.set(sceneIndex, "Please select a model first");
+          return next;
+        });
+        setStatuses((prev) => {
+          const next = new Map(prev);
+          next.set(sceneIndex, "error");
+          return next;
+        });
+        return;
+      }
+
+      setStatuses((prev) => {
+        const next = new Map(prev);
+        next.set(sceneIndex, "processing");
+        return next;
+      });
+
+      // Clear any previous error
+      setErrors((prev) => {
+        const next = new Map(prev);
+        next.delete(sceneIndex);
+        return next;
+      });
+
+      try {
+        const result = await generateVideo(
+          projectData.id,
+          scene.id,
+          imageKey,
+          selectedModel,
+          scene.estimatedDuration ?? undefined
+        );
+
+        // Get presigned URL for the generated video
+        const url = await getVideoPresignedUrl(result.videoKey);
+
+        setVideoKeys((prev) => {
+          const next = new Map(prev);
+          next.set(sceneIndex, result.videoKey);
+          return next;
+        });
+
+        setVideoUrls((prev) => {
+          const next = new Map(prev);
+          next.set(sceneIndex, url);
+          return next;
+        });
+
+        setStatuses((prev) => {
+          const next = new Map(prev);
+          next.set(sceneIndex, "completed");
+          return next;
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Video generation failed";
+
+        setErrors((prev) => {
+          const next = new Map(prev);
+          next.set(sceneIndex, message);
+          return next;
+        });
+
+        setStatuses((prev) => {
+          const next = new Map(prev);
+          next.set(sceneIndex, "error");
+          return next;
+        });
+      }
+    },
+    [scenes, projectData?.id, imageKeys, selectedModel]
+  );
 
   const handleGenerateAll = useCallback(async () => {
     setIsBulkGenerating(true);
@@ -221,8 +418,27 @@ export function StepVideo() {
     }
 
     setIsBulkGenerating(false);
-    markStepCompleted(6);
-  }, [scenes.length, handleGenerate, markStepCompleted]);
+
+    // Check if all completed
+    const allCompleted = scenes.every((_, i) => {
+      const s = statuses.get(i);
+      return s === "completed";
+    });
+    if (allCompleted) {
+      markStepCompleted(6);
+    }
+  }, [scenes, handleGenerate, markStepCompleted, statuses]);
+
+  // Mark step completed when all scenes have videos
+  useEffect(() => {
+    if (
+      scenes.length > 0 &&
+      Array.from(statuses.values()).filter((s) => s === "completed").length ===
+        scenes.length
+    ) {
+      markStepCompleted(6);
+    }
+  }, [statuses, scenes.length, markStepCompleted]);
 
   const completedCount = Array.from(statuses.values()).filter(
     (s) => s === "completed"
@@ -233,6 +449,58 @@ export function StepVideo() {
   return (
     <StepContent>
       <div className="space-y-6">
+        {/* API Key missing banner */}
+        {hasApiKey === false && (
+          <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+            <Warning weight="duotone" className="size-5 text-destructive shrink-0" />
+            <p className="text-sm text-destructive">
+              kie.ai API Key fehlt. Bitte unter Einstellungen &rarr; API Keys hinzufuegen.
+            </p>
+          </div>
+        )}
+
+        {/* No source images banner */}
+        {hasNoImages && hasApiKey !== false && (
+          <div className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+            <Warning weight="duotone" className="size-5 text-amber-500 shrink-0" />
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              Bitte zuerst Bilder in Schritt 5 generieren.
+            </p>
+          </div>
+        )}
+
+        {/* Model selection */}
+        {hasApiKey !== false && (
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-foreground shrink-0">
+              Video Model:
+            </label>
+            {isLoadingModels ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <SpinnerGap weight="bold" className="size-4 animate-spin" />
+                Loading models...
+              </div>
+            ) : models.length > 0 ? (
+              <Select value={selectedModel} onValueChange={setSelectedModel}>
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder="Select a model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {models.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                No models available
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -255,7 +523,12 @@ export function StepVideo() {
           <Button
             size="sm"
             onClick={handleGenerateAll}
-            disabled={isBulkGenerating || scenes.length === 0}
+            disabled={
+              isBulkGenerating ||
+              scenes.length === 0 ||
+              hasApiKey === false ||
+              !selectedModel
+            }
             className={cn(
               "gap-1.5",
               "bg-gradient-to-r from-primary to-secondary text-white",
@@ -295,6 +568,10 @@ export function StepVideo() {
                 narrationText={scene.narrationText}
                 estimatedDuration={scene.estimatedDuration}
                 status={getStatus(index)}
+                errorMessage={errors.get(index) ?? null}
+                imageUrl={imageUrls.get(scene.id) ?? null}
+                videoUrl={videoUrls.get(index) ?? null}
+                hasImage={imageKeys.has(scene.id)}
                 onGenerate={() => handleGenerate(index)}
               />
             ))}

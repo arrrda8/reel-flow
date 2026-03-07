@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { apiKeys, projects, scenes, sceneImages } from "@/db/schema";
 import { decrypt } from "@/lib/encryption";
-import { uploadFile } from "@/lib/storage";
+import { uploadFile, getPresignedUrl } from "@/lib/storage";
 import { eq, and } from "drizzle-orm";
 import { NanoBananaProvider } from "@/lib/ai/providers/nanobanana";
 import { createAIProviderForUser } from "@/lib/ai";
@@ -120,4 +120,104 @@ export async function generateImage(
     .returning({ id: sceneImages.id });
 
   return { success: true, imageKey: key, imageId: inserted.id };
+}
+
+/** Get a presigned URL for a stored image key. */
+export async function getImageUrl(imageKey: string): Promise<string> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  return getPresignedUrl(imageKey, 3600);
+}
+
+/** Existing image variant data returned to the client. */
+export interface SceneImageData {
+  id: string;
+  sceneId: string;
+  variantIndex: number;
+  fileUrl: string | null;
+  isSelected: boolean;
+  promptUsed: string | null;
+  presignedUrl: string | null;
+}
+
+/** Load all existing scene images for a project (with presigned URLs). */
+export async function loadSceneImages(
+  projectId: string
+): Promise<SceneImageData[]> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  // Verify project ownership
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(
+      and(eq(projects.id, projectId), eq(projects.userId, session.user.id))
+    )
+    .limit(1);
+  if (!project) throw new Error("Project not found");
+
+  // Get all scenes for this project
+  const projectScenes = await db
+    .select({ id: scenes.id })
+    .from(scenes)
+    .where(eq(scenes.projectId, projectId));
+
+  if (projectScenes.length === 0) return [];
+
+  const sceneIds = projectScenes.map((s) => s.id);
+
+  // Get all images for these scenes
+  const images = await db
+    .select()
+    .from(sceneImages)
+    .where(
+      and(
+        eq(sceneImages.status, "completed"),
+      )
+    );
+
+  // Filter to only images belonging to our scenes
+  const projectImages = images.filter((img) => sceneIds.includes(img.sceneId));
+
+  // Generate presigned URLs
+  const result: SceneImageData[] = await Promise.all(
+    projectImages.map(async (img) => ({
+      id: img.id,
+      sceneId: img.sceneId,
+      variantIndex: img.variantIndex,
+      fileUrl: img.fileUrl,
+      isSelected: img.isSelected,
+      promptUsed: img.promptUsed,
+      presignedUrl: img.fileUrl ? await getPresignedUrl(img.fileUrl, 3600) : null,
+    }))
+  );
+
+  return result;
+}
+
+/** Update the selected variant for a scene (deselect others, select the given one). */
+export async function selectImageVariant(
+  sceneId: string,
+  variantIndex: number
+): Promise<void> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  // Deselect all variants for this scene
+  await db
+    .update(sceneImages)
+    .set({ isSelected: false })
+    .where(eq(sceneImages.sceneId, sceneId));
+
+  // Select the chosen variant
+  await db
+    .update(sceneImages)
+    .set({ isSelected: true })
+    .where(
+      and(
+        eq(sceneImages.sceneId, sceneId),
+        eq(sceneImages.variantIndex, variantIndex)
+      )
+    );
 }

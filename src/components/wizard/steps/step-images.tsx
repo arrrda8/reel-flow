@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Image,
   ArrowClockwise,
@@ -8,6 +8,8 @@ import {
   SpinnerGap,
   Sparkle,
   Eye,
+  Warning,
+  PencilSimple,
 } from "@phosphor-icons/react";
 import { StepContent } from "@/components/wizard/step-content";
 import { useWizardStore } from "@/stores/wizard-store";
@@ -16,24 +18,14 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-
-// ---------------------------------------------------------------------------
-// Gradient placeholders that look like generated images
-// ---------------------------------------------------------------------------
-
-const IMAGE_GRADIENTS = [
-  "from-violet-600/40 via-indigo-500/30 to-blue-600/40",
-  "from-rose-600/40 via-pink-500/30 to-purple-600/40",
-  "from-amber-600/40 via-orange-500/30 to-red-600/40",
-  "from-emerald-600/40 via-teal-500/30 to-cyan-600/40",
-  "from-sky-600/40 via-blue-500/30 to-indigo-600/40",
-  "from-fuchsia-600/40 via-purple-500/30 to-violet-600/40",
-];
-
-function getGradient(sceneIndex: number, variantIndex: number): string {
-  const idx = (sceneIndex * 3 + variantIndex) % IMAGE_GRADIENTS.length;
-  return IMAGE_GRADIENTS[idx];
-}
+import {
+  generateImagePrompt,
+  generateImage,
+  getImageUrl,
+  loadSceneImages,
+  selectImageVariant,
+  type SceneImageData,
+} from "@/lib/image-actions";
 
 // ---------------------------------------------------------------------------
 // Image Slot Component
@@ -42,23 +34,25 @@ function getGradient(sceneIndex: number, variantIndex: number): string {
 function ImageSlot({
   sceneIndex,
   variantIndex,
-  isGenerated,
+  imageUrl,
   isSelected,
   isGenerating,
+  error,
   onGenerate,
   onSelect,
   onRegenerate,
 }: {
   sceneIndex: number;
   variantIndex: number;
-  isGenerated: boolean;
+  imageUrl: string | null;
   isSelected: boolean;
   isGenerating: boolean;
+  error: string | null;
   onGenerate: () => void;
   onSelect: () => void;
   onRegenerate: () => void;
 }) {
-  const gradient = getGradient(sceneIndex, variantIndex);
+  const isGenerated = !!imageUrl;
 
   return (
     <div
@@ -74,15 +68,12 @@ function ImageSlot({
     >
       {isGenerated ? (
         <>
-          {/* Generated image placeholder (gradient) */}
-          <div
-            className={cn(
-              "absolute inset-0 bg-gradient-to-br",
-              gradient
-            )}
+          {/* Real generated image */}
+          <img
+            src={imageUrl}
+            alt={`Scene ${sceneIndex + 1} - Variant ${variantIndex + 1}`}
+            className="absolute inset-0 h-full w-full object-cover"
           />
-          {/* Texture overlay */}
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_50%,rgba(0,0,0,0.3)_100%)]" />
 
           {/* Selection badge */}
           {isSelected && (
@@ -114,12 +105,24 @@ function ImageSlot({
           </div>
         </>
       ) : (
-        /* Empty slot with generate button */
+        /* Empty slot with generate button or error */
         <div className="flex h-full items-center justify-center bg-surface/30">
           {isGenerating ? (
             <div className="flex flex-col items-center gap-2">
               <SpinnerGap weight="bold" className="size-5 animate-spin text-primary" />
               <span className="text-xs text-muted-foreground">Generating...</span>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center gap-2 px-3 text-center">
+              <Warning weight="duotone" className="size-5 text-destructive" />
+              <span className="text-xs text-destructive line-clamp-2">{error}</span>
+              <button
+                type="button"
+                onClick={onGenerate}
+                className="text-xs text-primary hover:underline"
+              >
+                Retry
+              </button>
             </div>
           ) : (
             <button
@@ -143,21 +146,35 @@ function ImageSlot({
 
 function SceneImageGroup({
   sceneIndex,
+  sceneId,
   imagePrompt,
   narrationText,
-  variants,
+  visualDescription,
+  variantUrls,
   selectedVariant,
   generatingVariants,
+  variantErrors,
+  editedPrompt,
+  isPromptEditing,
+  onPromptChange,
+  onTogglePromptEdit,
   onGenerate,
   onSelect,
   onRegenerate,
 }: {
   sceneIndex: number;
+  sceneId: string;
   imagePrompt: string | null;
   narrationText: string | null;
-  variants: Set<number>;
+  visualDescription: string | null;
+  variantUrls: Map<number, string>;
   selectedVariant: number | null;
   generatingVariants: Set<number>;
+  variantErrors: Map<number, string>;
+  editedPrompt: string;
+  isPromptEditing: boolean;
+  onPromptChange: (prompt: string) => void;
+  onTogglePromptEdit: () => void;
   onGenerate: (variant: number) => void;
   onSelect: (variant: number) => void;
   onRegenerate: (variant: number) => void;
@@ -165,27 +182,53 @@ function SceneImageGroup({
   return (
     <div className="rounded-xl border border-border bg-card">
       <div className="border-b border-border px-5 py-3">
-        <div className="flex items-center gap-2">
-          <Badge className="bg-primary/10 text-primary border-primary/20 font-mono text-xs">
-            Scene {sceneIndex + 1}
-          </Badge>
-          {variants.size === 3 && selectedVariant !== null && (
-            <Badge variant="outline" className="gap-1 border-success/50 text-success text-xs">
-              <Check weight="bold" className="size-2.5" />
-              Selected
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Badge className="bg-primary/10 text-primary border-primary/20 font-mono text-xs">
+              Scene {sceneIndex + 1}
             </Badge>
-          )}
+            {variantUrls.size > 0 && selectedVariant !== null && (
+              <Badge variant="outline" className="gap-1 border-success/50 text-success text-xs">
+                <Check weight="bold" className="size-2.5" />
+                Selected
+              </Badge>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onTogglePromptEdit}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+          >
+            <PencilSimple weight="bold" className="size-3" />
+            {isPromptEditing ? "Done" : "Edit Prompt"}
+          </button>
         </div>
-        {imagePrompt && (
-          <p className="mt-2 text-xs font-mono text-muted-foreground line-clamp-2">
-            {imagePrompt}
+
+        {/* Visual description (always shown as context) */}
+        {visualDescription && (
+          <p className="mt-2 text-xs text-muted-foreground line-clamp-2">
+            <span className="font-medium text-foreground/70">Visual:</span> {visualDescription}
           </p>
         )}
-        {!imagePrompt && narrationText && (
+
+        {/* Editable image prompt */}
+        {isPromptEditing ? (
+          <textarea
+            value={editedPrompt}
+            onChange={(e) => onPromptChange(e.target.value)}
+            rows={3}
+            className="mt-2 w-full rounded-md border border-border bg-surface/50 px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            placeholder="Image generation prompt will be auto-generated, or type your own..."
+          />
+        ) : editedPrompt ? (
+          <p className="mt-2 text-xs font-mono text-muted-foreground line-clamp-2">
+            <span className="font-medium text-foreground/70">Prompt:</span> {editedPrompt}
+          </p>
+        ) : narrationText ? (
           <p className="mt-2 text-xs text-muted-foreground line-clamp-1 italic">
             {narrationText}
           </p>
-        )}
+        ) : null}
       </div>
       <div className="p-4">
         <div className="grid grid-cols-3 gap-3">
@@ -194,9 +237,10 @@ function SceneImageGroup({
               key={variantIndex}
               sceneIndex={sceneIndex}
               variantIndex={variantIndex}
-              isGenerated={variants.has(variantIndex)}
+              imageUrl={variantUrls.get(variantIndex) ?? null}
               isSelected={selectedVariant === variantIndex}
               isGenerating={generatingVariants.has(variantIndex)}
+              error={variantErrors.get(variantIndex) ?? null}
               onGenerate={() => onGenerate(variantIndex)}
               onSelect={() => onSelect(variantIndex)}
               onRegenerate={() => onRegenerate(variantIndex)}
@@ -218,18 +262,106 @@ export function StepImages() {
 
   const scenes = projectData?.scenes ?? [];
 
-  // Track which variants are generated per scene: Map<sceneIndex, Set<variantIndex>>
-  const [generatedVariants, setGeneratedVariants] = useState<Map<number, Set<number>>>(new Map());
+  // Image URLs per scene per variant: Map<sceneIndex, Map<variantIndex, url>>
+  const [imageUrls, setImageUrls] = useState<Map<number, Map<number, string>>>(new Map());
   // Track which variant is selected per scene
   const [selectedVariants, setSelectedVariants] = useState<Map<number, number>>(new Map());
   // Track which variants are currently generating
   const [generatingVariants, setGeneratingVariants] = useState<Map<number, Set<number>>>(new Map());
+  // Track errors per variant: Map<sceneIndex, Map<variantIndex, errorMessage>>
+  const [variantErrors, setVariantErrors] = useState<Map<number, Map<number, string>>>(new Map());
+
+  // Editable prompts per scene
+  const [editedPrompts, setEditedPrompts] = useState<Map<number, string>>(new Map());
+  // Which scenes have prompt editing open
+  const [editingPrompts, setEditingPrompts] = useState<Set<number>>(new Set());
+
+  // API key missing banner
+  const [apiKeyMissing, setApiKeyMissing] = useState(false);
 
   // Bulk generation
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(0);
 
+  // Track if we already loaded existing images
+  const loadedRef = useRef(false);
+
+  // Load existing images on mount
+  useEffect(() => {
+    if (!projectData?.id || loadedRef.current) return;
+    loadedRef.current = true;
+
+    (async () => {
+      try {
+        const existing = await loadSceneImages(projectData.id);
+        if (existing.length === 0) return;
+
+        const urlMap = new Map<number, Map<number, string>>();
+        const selMap = new Map<number, number>();
+        const promptMap = new Map<number, string>();
+
+        for (const img of existing) {
+          // Find scene index by scene ID
+          const sceneIdx = scenes.findIndex((s) => s.id === img.sceneId);
+          if (sceneIdx === -1) continue;
+
+          if (!urlMap.has(sceneIdx)) urlMap.set(sceneIdx, new Map());
+          if (img.presignedUrl) {
+            urlMap.get(sceneIdx)!.set(img.variantIndex, img.presignedUrl);
+          }
+          if (img.isSelected) {
+            selMap.set(sceneIdx, img.variantIndex);
+          }
+          if (img.promptUsed && !promptMap.has(sceneIdx)) {
+            promptMap.set(sceneIdx, img.promptUsed);
+          }
+        }
+
+        setImageUrls(urlMap);
+        setSelectedVariants(selMap);
+        setEditedPrompts(promptMap);
+      } catch {
+        // Silently fail loading existing images
+      }
+    })();
+  }, [projectData?.id, scenes]);
+
+  // Initialize prompts from scene imagePrompt field
+  useEffect(() => {
+    if (scenes.length === 0) return;
+    setEditedPrompts((prev) => {
+      const next = new Map(prev);
+      for (let i = 0; i < scenes.length; i++) {
+        if (!next.has(i) && scenes[i].imagePrompt) {
+          next.set(i, scenes[i].imagePrompt!);
+        }
+      }
+      return next;
+    });
+  }, [scenes]);
+
+  const setError = useCallback((sceneIndex: number, variantIndex: number, error: string | null) => {
+    setVariantErrors((prev) => {
+      const next = new Map(prev);
+      const sceneMap = new Map(next.get(sceneIndex) ?? []);
+      if (error) {
+        sceneMap.set(variantIndex, error);
+      } else {
+        sceneMap.delete(variantIndex);
+      }
+      next.set(sceneIndex, sceneMap);
+      return next;
+    });
+  }, []);
+
   const handleGenerate = useCallback(async (sceneIndex: number, variantIndex: number) => {
+    if (!projectData) return;
+    const scene = scenes[sceneIndex];
+    if (!scene) return;
+
+    // Clear any previous error
+    setError(sceneIndex, variantIndex, null);
+
     // Mark as generating
     setGeneratingVariants((prev) => {
       const next = new Map(prev);
@@ -239,51 +371,95 @@ export function StepImages() {
       return next;
     });
 
-    // Mock delay
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    try {
+      // Step 1: Get or use existing prompt
+      let prompt = editedPrompts.get(sceneIndex) ?? "";
+      if (!prompt) {
+        prompt = await generateImagePrompt(
+          projectData.id,
+          scene.visualDescription ?? "",
+          scene.narrationText ?? ""
+        );
+        // Save the generated prompt
+        setEditedPrompts((prev) => {
+          const next = new Map(prev);
+          next.set(sceneIndex, prompt);
+          return next;
+        });
+      }
 
-    // Mark as generated
-    setGeneratedVariants((prev) => {
-      const next = new Map(prev);
-      const sceneSet = new Set(next.get(sceneIndex) ?? []);
-      sceneSet.add(variantIndex);
-      next.set(sceneIndex, sceneSet);
-      return next;
-    });
+      // Step 2: Generate the image
+      const result = await generateImage(
+        projectData.id,
+        scene.id,
+        prompt,
+        variantIndex,
+        projectData.aspectRatio ?? "16:9"
+      );
 
-    // Remove from generating
-    setGeneratingVariants((prev) => {
-      const next = new Map(prev);
-      const sceneSet = new Set(next.get(sceneIndex) ?? []);
-      sceneSet.delete(variantIndex);
-      next.set(sceneIndex, sceneSet);
-      return next;
-    });
+      // Step 3: Get presigned URL for display
+      const url = await getImageUrl(result.imageKey);
 
-    // Auto-select first generated variant
+      // Update the image URL
+      setImageUrls((prev) => {
+        const next = new Map(prev);
+        if (!next.has(sceneIndex)) next.set(sceneIndex, new Map());
+        next.get(sceneIndex)!.set(variantIndex, url);
+        return next;
+      });
+
+      // Auto-select first generated variant
+      setSelectedVariants((prev) => {
+        if (prev.has(sceneIndex)) return prev;
+        const next = new Map(prev);
+        next.set(sceneIndex, variantIndex);
+        return next;
+      });
+
+      // Persist selection
+      await selectImageVariant(scene.id, variantIndex).catch(() => {});
+
+      setApiKeyMissing(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Image generation failed";
+
+      if (message.includes("No NanoBanana API key")) {
+        setApiKeyMissing(true);
+      }
+
+      setError(sceneIndex, variantIndex, message);
+    } finally {
+      // Remove from generating
+      setGeneratingVariants((prev) => {
+        const next = new Map(prev);
+        const sceneSet = new Set(next.get(sceneIndex) ?? []);
+        sceneSet.delete(variantIndex);
+        next.set(sceneIndex, sceneSet);
+        return next;
+      });
+    }
+  }, [projectData, scenes, editedPrompts, setError]);
+
+  const handleSelect = useCallback(async (sceneIndex: number, variantIndex: number) => {
+    const scene = scenes[sceneIndex];
     setSelectedVariants((prev) => {
-      if (prev.has(sceneIndex)) return prev;
       const next = new Map(prev);
       next.set(sceneIndex, variantIndex);
       return next;
     });
-  }, []);
-
-  const handleSelect = useCallback((sceneIndex: number, variantIndex: number) => {
-    setSelectedVariants((prev) => {
-      const next = new Map(prev);
-      next.set(sceneIndex, variantIndex);
-      return next;
-    });
-  }, []);
+    // Persist selection
+    if (scene) {
+      await selectImageVariant(scene.id, variantIndex).catch(() => {});
+    }
+  }, [scenes]);
 
   const handleRegenerate = useCallback(async (sceneIndex: number, variantIndex: number) => {
-    // Remove from generated
-    setGeneratedVariants((prev) => {
+    // Remove existing URL
+    setImageUrls((prev) => {
       const next = new Map(prev);
-      const sceneSet = new Set(next.get(sceneIndex) ?? []);
-      sceneSet.delete(variantIndex);
-      next.set(sceneIndex, sceneSet);
+      const sceneMap = new Map(next.get(sceneIndex) ?? []);
+      sceneMap.delete(variantIndex);
+      next.set(sceneIndex, sceneMap);
       return next;
     });
 
@@ -300,8 +476,8 @@ export function StepImages() {
 
     for (let sceneIdx = 0; sceneIdx < scenes.length; sceneIdx++) {
       for (let varIdx = 0; varIdx < 3; varIdx++) {
-        const existingVariants = generatedVariants.get(sceneIdx);
-        if (existingVariants?.has(varIdx)) {
+        const existingUrls = imageUrls.get(sceneIdx);
+        if (existingUrls?.has(varIdx)) {
           completed++;
           setBulkProgress((completed / totalSlots) * 100);
           continue;
@@ -310,16 +486,42 @@ export function StepImages() {
         await handleGenerate(sceneIdx, varIdx);
         completed++;
         setBulkProgress((completed / totalSlots) * 100);
+
+        // If API key is missing, abort bulk generation
+        if (apiKeyMissing) {
+          setIsBulkGenerating(false);
+          return;
+        }
       }
     }
 
     setIsBulkGenerating(false);
     markStepCompleted(5);
-  }, [scenes.length, generatedVariants, handleGenerate, markStepCompleted]);
+  }, [scenes.length, imageUrls, handleGenerate, markStepCompleted, apiKeyMissing]);
+
+  const handlePromptChange = useCallback((sceneIndex: number, prompt: string) => {
+    setEditedPrompts((prev) => {
+      const next = new Map(prev);
+      next.set(sceneIndex, prompt);
+      return next;
+    });
+  }, []);
+
+  const handleTogglePromptEdit = useCallback((sceneIndex: number) => {
+    setEditingPrompts((prev) => {
+      const next = new Set(prev);
+      if (next.has(sceneIndex)) {
+        next.delete(sceneIndex);
+      } else {
+        next.add(sceneIndex);
+      }
+      return next;
+    });
+  }, []);
 
   // Stats
-  const totalGenerated = Array.from(generatedVariants.values()).reduce(
-    (sum, set) => sum + set.size,
+  const totalGenerated = Array.from(imageUrls.values()).reduce(
+    (sum, map) => sum + map.size,
     0
   );
   const totalSlots = scenes.length * 3;
@@ -329,6 +531,16 @@ export function StepImages() {
   return (
     <StepContent>
       <div className="space-y-6">
+        {/* API Key missing banner */}
+        {apiKeyMissing && (
+          <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+            <Warning weight="duotone" className="size-5 text-destructive shrink-0" />
+            <p className="text-sm text-destructive">
+              NanoBanana API Key fehlt. Bitte unter Einstellungen &rarr; API Keys hinzufuegen.
+            </p>
+          </div>
+        )}
+
         {/* Header stats */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -388,11 +600,18 @@ export function StepImages() {
               <SceneImageGroup
                 key={scene.id}
                 sceneIndex={index}
+                sceneId={scene.id}
                 imagePrompt={scene.imagePrompt}
                 narrationText={scene.narrationText}
-                variants={generatedVariants.get(index) ?? new Set()}
+                visualDescription={scene.visualDescription}
+                variantUrls={imageUrls.get(index) ?? new Map()}
                 selectedVariant={selectedVariants.get(index) ?? null}
                 generatingVariants={generatingVariants.get(index) ?? new Set()}
+                variantErrors={variantErrors.get(index) ?? new Map()}
+                editedPrompt={editedPrompts.get(index) ?? ""}
+                isPromptEditing={editingPrompts.has(index)}
+                onPromptChange={(prompt) => handlePromptChange(index, prompt)}
+                onTogglePromptEdit={() => handleTogglePromptEdit(index)}
                 onGenerate={(variant) => handleGenerate(index, variant)}
                 onSelect={(variant) => handleSelect(index, variant)}
                 onRegenerate={(variant) => handleRegenerate(index, variant)}

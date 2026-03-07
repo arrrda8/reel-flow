@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db/index";
 import { apiKeys, projects, scenes, voiceOvers } from "@/db/schema";
 import { decrypt } from "@/lib/encryption";
-import { uploadFile } from "@/lib/storage";
+import { uploadFile, getPresignedUrl } from "@/lib/storage";
 import { eq, and } from "drizzle-orm";
 import { ElevenLabsProvider } from "@/lib/ai/providers/elevenlabs";
 
@@ -121,4 +121,11 @@ export async function generateAllVoiceOvers(
   }
 
   return results;
+}
+
+export async function getVoiceOverUrl(audioKey: string): Promise<string> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  return getPresignedUrl(audioKey, 3600);
 }
