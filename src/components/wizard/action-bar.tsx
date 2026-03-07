@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useTransition } from "react";
+import { useCallback, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -62,7 +62,7 @@ export function WizardActionBar() {
   const markStepCompleted = useWizardStore((s) => s.markStepCompleted);
   const setSaving = useWizardStore((s) => s.setSaving);
 
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
 
   const isFirstStep = currentStep === 1;
   const isLastStep = currentStep === TOTAL_STEPS;
@@ -72,27 +72,27 @@ export function WizardActionBar() {
     prevStep();
   }, [prevStep]);
 
-  const handleNext = useCallback(() => {
+  const handleNext = useCallback(async () => {
     if (!projectId) return;
 
-    startTransition(async () => {
-      setSaving(true);
+    setSaving(true);
+    setIsPending(true);
 
-      try {
-        // Save current step progress to the database
-        const targetStep = isLastStep ? currentStep : currentStep + 1;
-        await updateProjectStep(projectId, targetStep);
+    try {
+      // Save current step progress to the database
+      const targetStep = isLastStep ? currentStep : currentStep + 1;
+      await updateProjectStep(projectId, targetStep);
 
-        // Mark current step as completed and move forward
-        markStepCompleted(currentStep);
+      // Mark current step as completed and move forward
+      markStepCompleted(currentStep);
 
-        if (!isLastStep) {
-          nextStep();
-        }
-      } finally {
-        setSaving(false);
+      if (!isLastStep) {
+        nextStep();
       }
-    });
+    } finally {
+      setSaving(false);
+      setIsPending(false);
+    }
   }, [
     projectId,
     currentStep,
