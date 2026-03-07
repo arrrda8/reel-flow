@@ -10,7 +10,7 @@ import { getStepById } from "@/lib/wizard-steps";
 // ---------------------------------------------------------------------------
 
 interface StepContentProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   isLoading?: boolean;
 }
 
