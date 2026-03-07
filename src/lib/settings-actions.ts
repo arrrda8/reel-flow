@@ -299,7 +299,7 @@ export async function deleteApiKey(
 }
 
 // ---------------------------------------------------------------------------
-// testApiKey - Mock test (toggle isValid status)
+// testApiKey - Validate key against provider API
 // ---------------------------------------------------------------------------
 
 export async function testApiKey(
@@ -311,32 +311,60 @@ export async function testApiKey(
   }
 
   try {
-    // Get current key
-    const [key] = await db
-      .select({ id: apiKeys.id, isValid: apiKeys.isValid })
+    const [keyRow] = await db
+      .select()
       .from(apiKeys)
-      .where(
-        and(eq(apiKeys.id, keyId), eq(apiKeys.userId, session.user.id))
-      )
+      .where(and(eq(apiKeys.id, keyId), eq(apiKeys.userId, session.user.id)))
       .limit(1);
 
-    if (!key) {
+    if (!keyRow) {
       return { success: false, error: "API key not found" };
     }
 
-    // Mock test: toggle validity (in real app, would actually test the key)
-    const newIsValid = !key.isValid;
+    const decryptedKey = decrypt(keyRow.encryptedKey, keyRow.iv);
+    let isValid = false;
+
+    try {
+      switch (keyRow.provider) {
+        case "anthropic": {
+          const { AnthropicProvider } = await import("@/lib/ai/providers/anthropic");
+          const provider = new AnthropicProvider(decryptedKey);
+          isValid = await provider.validateKey();
+          break;
+        }
+        case "openai": {
+          const { OpenAIProvider } = await import("@/lib/ai/providers/openai");
+          const provider = new OpenAIProvider(decryptedKey);
+          isValid = await provider.validateKey();
+          break;
+        }
+        case "gemini": {
+          const { GeminiProvider } = await import("@/lib/ai/providers/gemini");
+          const provider = new GeminiProvider(decryptedKey);
+          isValid = await provider.validateKey();
+          break;
+        }
+        case "elevenlabs": {
+          const res = await fetch("https://api.elevenlabs.io/v1/user", {
+            headers: { "xi-api-key": decryptedKey },
+          });
+          isValid = res.ok;
+          break;
+        }
+        default:
+          isValid = true;
+      }
+    } catch {
+      isValid = false;
+    }
 
     await db
       .update(apiKeys)
-      .set({
-        isValid: newIsValid,
-        lastTestedAt: new Date(),
-      })
+      .set({ isValid, lastTestedAt: new Date() })
       .where(eq(apiKeys.id, keyId));
 
     revalidatePath("/settings");
-    return { success: true, isValid: newIsValid };
+    return { success: true, isValid };
   } catch {
     return {
       success: false,
