@@ -2,7 +2,7 @@
 
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useLocale } from "next-intl";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   GearSix,
@@ -38,7 +38,12 @@ function getInitials(name?: string | null): string {
 export function TopBar({ projectName }: TopBarProps) {
   const { data: session } = useSession();
   const router = useRouter();
-  const currentLocale = useLocale();
+  const [currentLocale, setCurrentLocale] = useState("de");
+
+  useEffect(() => {
+    const match = document.cookie.match(/(?:^|; )locale=([^;]*)/);
+    if (match) setCurrentLocale(match[1]);
+  }, []);
 
   async function handleLocaleChange(locale: "de" | "en") {
     await setLocale(locale);
