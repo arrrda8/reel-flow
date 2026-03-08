@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { apiKeys, projects, scenes, videoClips, sceneImages } from "@/db/schema";
 import { decrypt } from "@/lib/encryption";
-import { uploadFile, getPresignedUrl } from "@/lib/storage";
+import { uploadFile, getPresignedUrl, getPublicFileUrl } from "@/lib/storage";
 import { eq, and } from "drizzle-orm";
 import { KieProvider, KIE_MODELS } from "@/lib/ai/providers/kie";
 import type { KieModel } from "@/lib/ai/providers/kie";
@@ -76,8 +76,8 @@ export async function generateVideo(
     .limit(1);
   if (!scene) throw new Error("Scene not found");
 
-  // Get a presigned URL for the source image
-  const imageUrl = await getPresignedUrl(imageKey, 3600);
+  // Get a publicly accessible URL for the source image (external services need this)
+  const imageUrl = getPublicFileUrl(imageKey, 3600);
 
   const provider = await getKieProvider();
   const taskId = await provider.generateVideo({

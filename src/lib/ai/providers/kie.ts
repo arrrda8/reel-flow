@@ -25,8 +25,8 @@ export const KIE_MODELS: KieModel[] = [
   },
   {
     id: "veo3",
-    name: "Veo 3.1",
-    description: "Google Veo, high quality, 16:9",
+    name: "Veo 3.1 Fast",
+    description: "Google Veo, fast mode, image-to-video",
   },
 ];
 
@@ -55,44 +55,48 @@ export class KieProvider {
   async generateVideo(options: KieGenerateOptions): Promise<string> {
     const model = options.model;
 
-    // Kling models use /jobs/createTask with a different body format
-    if (model === "kling-3.0" || model === "kling-2.6") {
-      return this.generateKling(options);
-    }
-
-    // Veo uses /veo/generate
-    if (model === "veo3") {
-      return this.generateVeo(options);
-    }
-
-    // Runway uses /runway/generate
+    if (model === "kling-3.0") return this.generateKling3(options);
+    if (model === "kling-2.6") return this.generateKling26(options);
+    if (model === "veo3") return this.generateVeo(options);
     return this.generateRunway(options);
   }
 
-  private async generateKling(options: KieGenerateOptions): Promise<string> {
-    const modelName =
-      options.model === "kling-3.0"
-        ? "kling-3.0/video"
-        : "kling-2.6/image-to-video";
+  private async generateKling3(options: KieGenerateOptions): Promise<string> {
+    // Kling 3.0 single-shot image-to-video
+    const body = {
+      model: "kling-3.0/video",
+      callBackUrl: "https://example.com/noop",
+      input: {
+        multi_shots: false,
+        prompt: options.prompt || "Animate this image with natural, cinematic motion",
+        image_urls: [options.imageUrl],
+        duration: String(options.duration ?? 5),
+        aspect_ratio: options.aspectRatio || "16:9",
+        mode: "std",
+        sound: false,
+      },
+    };
 
-    const body: Record<string, unknown> = {
-      model: modelName,
+    return this.createTask(body);
+  }
+
+  private async generateKling26(options: KieGenerateOptions): Promise<string> {
+    // Kling 2.6 image-to-video
+    const body = {
+      model: "kling-2.6/image-to-video",
+      callBackUrl: "https://example.com/noop",
       input: {
         prompt: options.prompt || "Animate this image with natural, cinematic motion",
         image_urls: [options.imageUrl],
         sound: false,
         duration: String(options.duration ?? 5),
       },
-      callBackUrl: "https://example.com/noop",
     };
 
-    // Kling 3.0 supports mode
-    if (options.model === "kling-3.0") {
-      (body.input as Record<string, unknown>).mode = "std";
-      (body.input as Record<string, unknown>).aspect_ratio =
-        options.aspectRatio || "16:9";
-    }
+    return this.createTask(body);
+  }
 
+  private async createTask(body: Record<string, unknown>): Promise<string> {
     const res = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: "POST",
       headers: this.headers(),
@@ -101,7 +105,7 @@ export class KieProvider {
 
     if (!res.ok) {
       const errorText = await res.text();
-      throw new Error(`kie.ai Kling error: ${res.status} - ${errorText}`);
+      throw new Error(`kie.ai error: ${res.status} - ${errorText}`);
     }
 
     const data = await res.json();
@@ -109,15 +113,20 @@ export class KieProvider {
       throw new Error(data.msg || `kie.ai error code: ${data.code}`);
     }
 
-    return data.data?.taskId;
+    const taskId = data.data?.taskId;
+    if (!taskId) {
+      throw new Error("kie.ai did not return a taskId");
+    }
+    return taskId;
   }
 
   private async generateVeo(options: KieGenerateOptions): Promise<string> {
+    // Veo 3.1 Fast — use FIRST_AND_LAST_FRAMES_2_VIDEO for image-to-video
     const body = {
       prompt: options.prompt || "Animate this image with natural, cinematic motion",
       imageUrls: [options.imageUrl],
-      model: "veo3",
-      generationType: "REFERENCE_2_VIDEO",
+      model: "veo3_fast",
+      generationType: "FIRST_AND_LAST_FRAMES_2_VIDEO",
       aspect_ratio: options.aspectRatio || "16:9",
       callBackUrl: "https://example.com/noop",
     };
@@ -135,10 +144,14 @@ export class KieProvider {
 
     const data = await res.json();
     if (data.code !== 200) {
-      throw new Error(data.msg || `kie.ai error code: ${data.code}`);
+      throw new Error(data.msg || `kie.ai Veo error code: ${data.code}`);
     }
 
-    return data.data?.taskId;
+    const taskId = data.data?.taskId;
+    if (!taskId) {
+      throw new Error("kie.ai Veo did not return a taskId");
+    }
+    return taskId;
   }
 
   private async generateRunway(options: KieGenerateOptions): Promise<string> {
@@ -163,10 +176,14 @@ export class KieProvider {
 
     const data = await res.json();
     if (data.code !== 200) {
-      throw new Error(data.msg || `kie.ai error code: ${data.code}`);
+      throw new Error(data.msg || `kie.ai Runway error code: ${data.code}`);
     }
 
-    return data.data?.taskId;
+    const taskId = data.data?.taskId;
+    if (!taskId) {
+      throw new Error("kie.ai Runway did not return a taskId");
+    }
+    return taskId;
   }
 
   async getTaskStatus(taskId: string): Promise<{
@@ -188,6 +205,10 @@ export class KieProvider {
       throw new Error(data.msg || `kie.ai status error code: ${data.code}`);
     }
 
+    if (!data.data) {
+      throw new Error(`Task ${taskId} not found (recordInfo returned null)`);
+    }
+
     return data.data;
   }
 
@@ -204,7 +225,6 @@ export class KieProvider {
         if (status.resultJson) {
           try {
             const result = JSON.parse(status.resultJson);
-            // Different models return video URL in different fields
             const url =
               result.video_url ||
               result.videoUrl ||

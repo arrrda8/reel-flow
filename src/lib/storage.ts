@@ -1,4 +1,5 @@
 import * as Minio from "minio";
+import { createHmac } from "crypto";
 
 let _minioClient: Minio.Client | null = null;
 
@@ -71,6 +72,21 @@ export async function getPresignedUrl(
   // MinIO runs on an internal Docker network, so presigned URLs
   // use internal hostnames that browsers can't reach.
   return `/api/storage?key=${encodeURIComponent(key)}`;
+}
+
+/**
+ * Generate a publicly accessible signed URL for external services (e.g. kie.ai).
+ * Uses HMAC signature with expiry for security.
+ */
+export function getPublicFileUrl(key: string, expirySeconds = 3600): string {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "";
+  const secret = process.env.STORAGE_PUBLIC_SECRET || process.env.AUTH_SECRET || "reelflow-public-storage";
+  const exp = String(Date.now() + expirySeconds * 1000);
+  const sig = createHmac("sha256", secret)
+    .update(`${key}:${exp}`)
+    .digest("hex");
+
+  return `${baseUrl}/api/storage/public?key=${encodeURIComponent(key)}&sig=${sig}&exp=${exp}`;
 }
 
 export async function deleteFile(key: string): Promise<void> {
