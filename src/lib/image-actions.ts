@@ -56,20 +56,26 @@ export async function generateImagePrompt(
     providerType
   );
 
-  const prompt = `Create a detailed image generation prompt for an AI image generator based on this scene:
+  const prompt = `You are an expert prompt engineer for AI image generation (Google Gemini Imagen / Nano Banana 2).
 
-Visual description: ${sceneVisual}
-Narration context: ${sceneNarration}
+Your task: Create a highly detailed, cinematic image prompt for a faceless video scene.
 
-Write a single, detailed prompt (1-2 sentences) that describes the visual scene. Focus on:
-- Specific visual elements, composition, and lighting
-- Art style (photorealistic, cinematic, illustration, etc.)
-- Mood and atmosphere
-- No text, no words, no letters in the image
+SCENE CONTEXT:
+- Visual description: ${sceneVisual}
+- Narration: ${sceneNarration}
 
-Respond with ONLY the prompt text, nothing else.`;
+RULES:
+1. Write ONE detailed paragraph (3-5 sentences) — the more specific, the better
+2. ALWAYS specify: camera angle, lens type, lighting setup, color palette, mood
+3. ALWAYS specify: art style (e.g. "cinematic photography", "hyper-realistic digital art", "editorial photography", "3D render")
+4. NEVER include people's faces, text, words, letters, or watermarks
+5. Use descriptive composition language (rule of thirds, leading lines, negative space, depth of field)
+6. Include specific details like textures, materials, weather, time of day
+7. For faceless content: show hands, silhouettes, over-shoulder shots, objects, environments, abstract visuals
 
-  return provider.generateText(prompt, { maxTokens: 200, temperature: 0.7 });
+OUTPUT: Return ONLY the image prompt. No explanation, no prefix, no quotes.`;
+
+  return provider.generateText(prompt, { maxTokens: 500, temperature: 0.8 });
 }
 
 export async function generateImage(

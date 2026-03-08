@@ -6,7 +6,7 @@ import { apiKeys, projects, scenes, videoClips, sceneImages } from "@/db/schema"
 import { decrypt } from "@/lib/encryption";
 import { uploadFile, getPresignedUrl } from "@/lib/storage";
 import { eq, and } from "drizzle-orm";
-import { KieProvider } from "@/lib/ai/providers/kie";
+import { KieProvider, KIE_MODELS } from "@/lib/ai/providers/kie";
 import type { KieModel } from "@/lib/ai/providers/kie";
 
 async function getKieProvider(): Promise<KieProvider> {
@@ -31,8 +31,21 @@ async function getKieProvider(): Promise<KieProvider> {
 }
 
 export async function listKieModels(): Promise<KieModel[]> {
-  const provider = await getKieProvider();
-  return provider.listModels();
+  // Models are hardcoded — just verify the user has an API key
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  const [keyRow] = await db
+    .select({ id: apiKeys.id })
+    .from(apiKeys)
+    .where(
+      and(eq(apiKeys.userId, session.user.id), eq(apiKeys.provider, "kie"))
+    )
+    .limit(1);
+
+  if (!keyRow) return [];
+
+  return KIE_MODELS;
 }
 
 export async function generateVideo(
@@ -67,23 +80,13 @@ export async function generateVideo(
   const imageUrl = await getPresignedUrl(imageKey, 3600);
 
   const provider = await getKieProvider();
-  const jobId = await provider.generateVideo({
+  const taskId = await provider.generateVideo({
     imageUrl,
     model,
     duration,
   });
 
-  const result = await provider.waitForCompletion(jobId);
-
-  if (result.status === "failed") {
-    // Save failed status to DB
-    await db.insert(videoClips).values({
-      sceneId,
-      clipIndex: 0,
-      status: "failed",
-    });
-    throw new Error(result.error ?? "Video generation failed");
-  }
+  const result = await provider.waitForCompletion(taskId);
 
   if (!result.videoUrl) throw new Error("No video URL in result");
 
