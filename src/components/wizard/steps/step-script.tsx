@@ -316,7 +316,6 @@ export function StepScript() {
   const setSaving = useWizardStore((s) => s.setSaving);
   const markStepCompleted = useWizardStore((s) => s.markStepCompleted);
   const projectId = useWizardStore((s) => s.projectId);
-  const currentStep = useWizardStore((s) => s.currentStep);
 
   // Local scenes state
   const [localScenes, setLocalScenes] = useState<LocalScene[]>([]);
@@ -482,13 +481,17 @@ export function StepScript() {
     }
   }, [projectId, localScenes, setSaving, markStepCompleted, updateProjectData]);
 
-  // Auto-save scenes when navigating away from this step
-  const hasAutoSavedRef = useRef(false);
+  // Auto-save scenes on unmount (when user clicks "Next" and component unmounts)
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+
   useEffect(() => {
-    // When currentStep changes away from 3, auto-save scenes
-    if (currentStep !== 3 && localScenesRef.current.length > 0 && projectId && !hasAutoSavedRef.current) {
-      hasAutoSavedRef.current = true;
-      const scenesToSave = localScenesRef.current.map((s) => ({
+    return () => {
+      const pid = projectIdRef.current;
+      const currentScenes = localScenesRef.current;
+      if (!pid || currentScenes.length === 0) return;
+
+      const scenesToSave = currentScenes.map((s) => ({
         id: s.id,
         orderIndex: s.orderIndex,
         narrationText: s.narrationText || null,
@@ -497,29 +500,27 @@ export function StepScript() {
         estimatedDuration: s.estimatedDuration,
         mood: s.mood,
       }));
-      callAction("saveScenes", projectId, scenesToSave).then((result) => {
-        if ((result as { success: boolean }).success) {
-          updateProjectData({
-            scenes: localScenesRef.current.map((s, i) => ({
-              id: s.id ?? `temp-${i}`,
-              projectId: projectId,
-              orderIndex: s.orderIndex,
-              narrationText: s.narrationText || null,
-              visualDescription: s.visualDescription || null,
-              imagePrompt: s.imagePrompt || null,
-              estimatedDuration: s.estimatedDuration,
-              mood: s.mood,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            })),
-          });
-        }
-      }).catch(() => {});
-    }
-    if (currentStep === 3) {
-      hasAutoSavedRef.current = false;
-    }
-  }, [currentStep, projectId, updateProjectData]);
+
+      // Update store immediately so next step (Voice Over) has scenes
+      const storeScenes = currentScenes.map((s, i) => ({
+        id: s.id ?? `temp-${i}`,
+        projectId: pid,
+        orderIndex: s.orderIndex,
+        narrationText: s.narrationText || null,
+        visualDescription: s.visualDescription || null,
+        imagePrompt: s.imagePrompt || null,
+        estimatedDuration: s.estimatedDuration,
+        mood: s.mood,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+      useWizardStore.getState().updateProjectData({ scenes: storeScenes });
+
+      // Persist to DB in background
+      callAction("saveScenes", pid, scenesToSave).catch(() => {});
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Computed values
   const totalDuration = localScenes.reduce(
