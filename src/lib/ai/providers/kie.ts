@@ -190,7 +190,7 @@ export class KieProvider {
     state: string;
     resultJson?: string;
     failMsg?: string;
-  }> {
+  } | null> {
     const res = await fetch(
       `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
       { headers: this.headers() }
@@ -205,21 +205,27 @@ export class KieProvider {
       throw new Error(data.msg || `kie.ai status error code: ${data.code}`);
     }
 
-    if (!data.data) {
-      throw new Error(`Task ${taskId} not found (recordInfo returned null)`);
-    }
-
-    return data.data;
+    // Can be null if the task hasn't been registered yet
+    return data.data ?? null;
   }
 
   async waitForCompletion(
     taskId: string,
     maxWaitMs = 300_000
   ): Promise<{ videoUrl: string }> {
+    // Wait before first poll — tasks need time to register
+    await new Promise((r) => setTimeout(r, 5000));
+
     const start = Date.now();
 
     while (Date.now() - start < maxWaitMs) {
       const status = await this.getTaskStatus(taskId);
+
+      // Task not yet registered — keep polling
+      if (!status) {
+        await new Promise((r) => setTimeout(r, 5000));
+        continue;
+      }
 
       if (status.state === "success") {
         if (status.resultJson) {

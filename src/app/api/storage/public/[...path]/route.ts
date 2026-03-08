@@ -9,11 +9,18 @@ const SECRET = process.env.STORAGE_PUBLIC_SECRET || process.env.AUTH_SECRET || "
  * Public storage proxy for external services (e.g. kie.ai video generation).
  * Uses HMAC signature to prevent unauthorized access.
  *
- * Usage: GET /api/storage/public?key=...&sig=...&exp=...
+ * The file key is embedded in the URL path so external services can detect
+ * the file type from the extension:
+ *   GET /api/storage/public/projects/xxx/images/scene_v0.png?sig=...&exp=...
  */
-export async function GET(request: Request) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ path: string[] }> }
+) {
+  const { path } = await params;
+  const key = path.join("/");
+
   const url = new URL(request.url);
-  const key = url.searchParams.get("key");
   const sig = url.searchParams.get("sig");
   const exp = url.searchParams.get("exp");
 

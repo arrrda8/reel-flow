@@ -86,7 +86,9 @@ export function getPublicFileUrl(key: string, expirySeconds = 3600): string {
     .update(`${key}:${exp}`)
     .digest("hex");
 
-  return `${baseUrl}/api/storage/public?key=${encodeURIComponent(key)}&sig=${sig}&exp=${exp}`;
+  // Key is embedded in URL path so external services can detect file type from extension
+  // e.g. /api/storage/public/projects/xxx/images/scene_v0.png?sig=...&exp=...
+  return `${baseUrl}/api/storage/public/${key}?sig=${sig}&exp=${exp}`;
 }
 
 export async function deleteFile(key: string): Promise<void> {
