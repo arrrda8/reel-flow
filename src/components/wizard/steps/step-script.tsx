@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   TextAlignLeft,
   Plus,
@@ -316,9 +316,12 @@ export function StepScript() {
   const setSaving = useWizardStore((s) => s.setSaving);
   const markStepCompleted = useWizardStore((s) => s.markStepCompleted);
   const projectId = useWizardStore((s) => s.projectId);
+  const currentStep = useWizardStore((s) => s.currentStep);
 
   // Local scenes state
   const [localScenes, setLocalScenes] = useState<LocalScene[]>([]);
+  const localScenesRef = useRef(localScenes);
+  localScenesRef.current = localScenes;
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -478,6 +481,45 @@ export function StepScript() {
       setSaving(false);
     }
   }, [projectId, localScenes, setSaving, markStepCompleted, updateProjectData]);
+
+  // Auto-save scenes when navigating away from this step
+  const hasAutoSavedRef = useRef(false);
+  useEffect(() => {
+    // When currentStep changes away from 3, auto-save scenes
+    if (currentStep !== 3 && localScenesRef.current.length > 0 && projectId && !hasAutoSavedRef.current) {
+      hasAutoSavedRef.current = true;
+      const scenesToSave = localScenesRef.current.map((s) => ({
+        id: s.id,
+        orderIndex: s.orderIndex,
+        narrationText: s.narrationText || null,
+        visualDescription: s.visualDescription || null,
+        imagePrompt: s.imagePrompt || null,
+        estimatedDuration: s.estimatedDuration,
+        mood: s.mood,
+      }));
+      callAction("saveScenes", projectId, scenesToSave).then((result) => {
+        if ((result as { success: boolean }).success) {
+          updateProjectData({
+            scenes: localScenesRef.current.map((s, i) => ({
+              id: s.id ?? `temp-${i}`,
+              projectId: projectId,
+              orderIndex: s.orderIndex,
+              narrationText: s.narrationText || null,
+              visualDescription: s.visualDescription || null,
+              imagePrompt: s.imagePrompt || null,
+              estimatedDuration: s.estimatedDuration,
+              mood: s.mood,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })),
+          });
+        }
+      }).catch(() => {});
+    }
+    if (currentStep === 3) {
+      hasAutoSavedRef.current = false;
+    }
+  }, [currentStep, projectId, updateProjectData]);
 
   // Computed values
   const totalDuration = localScenes.reduce(
