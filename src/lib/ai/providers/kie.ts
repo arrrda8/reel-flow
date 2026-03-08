@@ -38,6 +38,24 @@ export interface KieGenerateOptions {
   aspectRatio?: string;
 }
 
+/** Recursively find the first URL-like string in an object */
+function findUrlInObject(obj: unknown, depth = 0): string | null {
+  if (depth > 5) return null;
+  if (typeof obj === "string" && obj.startsWith("http")) return obj;
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = findUrlInObject(item, depth + 1);
+      if (found) return found;
+    }
+  } else if (obj && typeof obj === "object") {
+    for (const val of Object.values(obj)) {
+      const found = findUrlInObject(val, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 export class KieProvider {
   constructor(private apiKey: string) {}
 
@@ -231,19 +249,37 @@ export class KieProvider {
         if (status.resultJson) {
           try {
             const result = JSON.parse(status.resultJson);
+            // Try all known kie.ai response shapes
             const url =
               result.video_url ||
               result.videoUrl ||
               result.url ||
-              result.output;
+              result.output ||
+              result.data?.video_url ||
+              result.data?.url ||
+              result.data?.output;
+
             if (url) return { videoUrl: url };
+
+            // Some models return an array of works/videos
+            const works = result.works || result.videos || result.data?.works || result.data?.videos;
+            if (Array.isArray(works) && works.length > 0) {
+              const firstUrl = works[0]?.video_url || works[0]?.url || works[0]?.resource;
+              if (firstUrl) return { videoUrl: firstUrl };
+            }
+
+            // Deep scan: find first string value that looks like a URL
+            const found = findUrlInObject(result);
+            if (found) return { videoUrl: found };
           } catch {
             if (status.resultJson.startsWith("http")) {
               return { videoUrl: status.resultJson };
             }
           }
         }
-        throw new Error("Video completed but no URL found in result");
+        throw new Error(
+          `Video completed but no URL found in result: ${status.resultJson?.substring(0, 500)}`
+        );
       }
 
       if (status.state === "fail") {
