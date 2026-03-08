@@ -200,6 +200,30 @@ export function StepVoiceOver() {
     return () => { cancelled = true; };
   }, []);
 
+  // Load existing voice-overs from DB on mount (audio persistence)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadExisting() {
+      if (!projectData?.id) return;
+      try {
+        const existing = await callAction<Record<number, string>>(
+          "loadExistingVoiceOvers",
+          projectData.id
+        );
+        if (!cancelled && existing && Object.keys(existing).length > 0) {
+          setSceneAudioUrls(existing);
+          setGeneratedScenes(new Set(Object.keys(existing).map(Number)));
+        }
+      } catch {
+        // Non-critical: if loading fails, user can re-generate
+      }
+    }
+
+    loadExisting();
+    return () => { cancelled = true; };
+  }, [projectData?.id]);
+
   // Cleanup audio on unmount
   useEffect(() => {
     return () => {

@@ -129,3 +129,48 @@ export async function getVoiceOverUrl(audioKey: string): Promise<string> {
 
   return getPresignedUrl(audioKey, 3600);
 }
+
+/**
+ * Load existing voice-overs for a project's scenes.
+ * Returns a map of scene index → proxy URL for completed voice-overs.
+ */
+export async function loadExistingVoiceOvers(
+  projectId: string
+): Promise<Record<number, string>> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  // Verify project ownership
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.userId, session.user.id)))
+    .limit(1);
+  if (!project) throw new Error("Project not found");
+
+  // Get all scenes ordered by index
+  const projectScenes = await db
+    .select({ id: scenes.id, orderIndex: scenes.orderIndex })
+    .from(scenes)
+    .where(eq(scenes.projectId, projectId))
+    .orderBy(scenes.orderIndex);
+
+  if (projectScenes.length === 0) return {};
+
+  // Get completed voice-overs for these scenes
+  const result: Record<number, string> = {};
+  for (let i = 0; i < projectScenes.length; i++) {
+    const scene = projectScenes[i];
+    const [vo] = await db
+      .select({ fileUrl: voiceOvers.fileUrl })
+      .from(voiceOvers)
+      .where(and(eq(voiceOvers.sceneId, scene.id), eq(voiceOvers.status, "completed")))
+      .limit(1);
+
+    if (vo?.fileUrl) {
+      result[i] = await getPresignedUrl(vo.fileUrl, 3600);
+    }
+  }
+
+  return result;
+}

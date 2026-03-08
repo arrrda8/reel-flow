@@ -21,6 +21,9 @@ const ACTION_REGISTRY: Record<string, () => Promise<{ fn: (...args: any[]) => an
   getVoiceOverUrl: async () => ({
     fn: (await import("@/lib/voice-actions")).getVoiceOverUrl,
   }),
+  loadExistingVoiceOvers: async () => ({
+    fn: (await import("@/lib/voice-actions")).loadExistingVoiceOvers,
+  }),
 
   // image-actions
   generateImagePrompt: async () => ({

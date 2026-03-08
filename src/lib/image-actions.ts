@@ -103,8 +103,8 @@ export async function generateImage(
   const nanoBanana = await getNanoBananaProvider();
   const imageBuffer = await nanoBanana.generateImage({ prompt, aspectRatio });
 
-  const key = `projects/${projectId}/images/${sceneId}_v${variantIndex}.webp`;
-  await uploadFile(key, Buffer.from(imageBuffer), "image/webp");
+  const key = `projects/${projectId}/images/${sceneId}_v${variantIndex}.png`;
+  await uploadFile(key, Buffer.from(imageBuffer), "image/png");
 
   // Save to sceneImages table
   const [inserted] = await db

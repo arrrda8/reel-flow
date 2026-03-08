@@ -1,3 +1,5 @@
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
+
 export interface NanoBananaGenerateOptions {
   prompt: string;
   aspectRatio?: string;
@@ -5,47 +7,71 @@ export interface NanoBananaGenerateOptions {
   height?: number;
 }
 
+/**
+ * NanoBanana image provider — uses Google Gemini image generation API
+ * with a Google AI Studio API key.
+ */
 export class NanoBananaProvider {
-  private baseUrl: string;
-
-  constructor(
-    private apiKey: string,
-    baseUrl = "https://api.nanobanana.com/v2",
-  ) {
-    this.baseUrl = baseUrl;
-  }
+  constructor(private apiKey: string) {}
 
   async generateImage(options: NanoBananaGenerateOptions): Promise<ArrayBuffer> {
-    const res = await fetch(`${this.baseUrl}/generate`, {
+    // Use Gemini's image generation model
+    const model = "gemini-2.5-flash-image";
+    const url = `${GEMINI_BASE}/models/${model}:generateContent`;
+
+    const res = await fetch(url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${this.apiKey}`,
+        "x-goog-api-key": this.apiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        prompt: options.prompt,
-        aspect_ratio: options.aspectRatio ?? "9:16",
-        width: options.width,
-        height: options.height,
+        contents: [
+          {
+            parts: [{ text: options.prompt }],
+          },
+        ],
+        generationConfig: {
+          responseModalities: ["IMAGE"],
+          imageConfig: {
+            aspectRatio: options.aspectRatio ?? "9:16",
+          },
+        },
       }),
     });
 
     if (!res.ok) {
       const errorText = await res.text();
-      throw new Error(`NanoBanana API error: ${res.status} - ${errorText}`);
-    }
-
-    const contentType = res.headers.get("content-type") ?? "";
-    if (contentType.startsWith("image/")) {
-      return res.arrayBuffer();
+      throw new Error(`Gemini Image API error: ${res.status} - ${errorText}`);
     }
 
     const data = await res.json();
-    if (data.url) {
-      const imageRes = await fetch(data.url);
-      return imageRes.arrayBuffer();
+
+    // Extract base64 image from response
+    const candidates = data.candidates;
+    if (!candidates || candidates.length === 0) {
+      throw new Error("Gemini Image API returned no candidates");
     }
 
-    throw new Error("Unexpected NanoBanana response format");
+    const parts = candidates[0]?.content?.parts;
+    if (!parts || parts.length === 0) {
+      throw new Error("Gemini Image API returned no image parts");
+    }
+
+    // Find the image part (inlineData with base64)
+    const imagePart = parts.find(
+      (p: { inlineData?: { mimeType: string; data: string } }) => p.inlineData?.data
+    );
+    if (!imagePart?.inlineData?.data) {
+      throw new Error("Gemini Image API response contains no image data");
+    }
+
+    // Convert base64 to ArrayBuffer
+    const base64 = imagePart.inlineData.data;
+    const binary = Buffer.from(base64, "base64");
+    return binary.buffer.slice(
+      binary.byteOffset,
+      binary.byteOffset + binary.byteLength
+    );
   }
 }
