@@ -224,6 +224,7 @@ export function StepVideo() {
   const [models, setModels] = useState<KieModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [isLoadingModels, setIsLoadingModels] = useState(true);
+  const [modelError, setModelError] = useState<string | null>(null);
 
   // API key check
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
@@ -247,53 +248,61 @@ export function StepVideo() {
     initRef.current = true;
 
     const init = async () => {
-      // Check API key
-      const apiKeyExists = await callAction<boolean>("checkKieApiKey");
-      setHasApiKey(apiKeyExists);
-
-      if (apiKeyExists) {
-        // Load models
-        try {
-          const kieModels = await callAction<KieModel[]>("listKieModels");
-          setModels(kieModels);
-          if (kieModels.length > 0) {
-            setSelectedModel(kieModels[0].id);
-          }
-        } catch {
-          // Models couldn't load – user will see empty select
-        }
-      }
-
-      // Load scene image keys
       try {
-        const sceneImageInfos = await callAction<Array<{ sceneId: string; imageKey: string }>>("getSceneImageKeys", projectData.id);
-        const keyMap = new Map<string, string>();
-        const urlMap = new Map<string, string>();
-        let anyImage = false;
+        // Check API key
+        const apiKeyExists = await callAction<boolean>("checkKieApiKey");
+        setHasApiKey(apiKeyExists);
 
-        for (const info of sceneImageInfos) {
-          if (info.imageKey) {
-            keyMap.set(info.sceneId, info.imageKey);
-            anyImage = true;
+        if (apiKeyExists) {
+          // Load models
+          try {
+            const kieModels = await callAction<KieModel[]>("listKieModels");
+            setModels(kieModels);
+            if (kieModels.length > 0) {
+              setSelectedModel(kieModels[0].id);
+            } else {
+              setModelError("listKieModels returned empty (API key may not be saved correctly)");
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setModelError(msg);
+          }
+        }
 
-            // Get presigned URL for display
-            try {
-              const url = await callAction<string>("getVideoPresignedUrl",info.imageKey);
-              urlMap.set(info.sceneId, url);
-            } catch {
-              // Image URL fetch failed – non-critical
+        // Load scene image keys
+        try {
+          const sceneImageInfos = await callAction<Array<{ sceneId: string; imageKey: string }>>("getSceneImageKeys", projectData!.id);
+          const keyMap = new Map<string, string>();
+          const urlMap = new Map<string, string>();
+          let anyImage = false;
+
+          for (const info of sceneImageInfos) {
+            if (info.imageKey) {
+              keyMap.set(info.sceneId, info.imageKey);
+              anyImage = true;
+
+              // Get presigned URL for display
+              try {
+                const url = await callAction<string>("getVideoPresignedUrl", info.imageKey);
+                urlMap.set(info.sceneId, url);
+              } catch {
+                // Image URL fetch failed – non-critical
+              }
             }
           }
+
+          setImageKeys(keyMap);
+          setImageUrls(urlMap);
+          setHasNoImages(!anyImage);
+        } catch {
+          setHasNoImages(true);
         }
-
-        setImageKeys(keyMap);
-        setImageUrls(urlMap);
-        setHasNoImages(!anyImage);
-      } catch {
-        setHasNoImages(true);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setModelError(`Init failed: ${msg}`);
+      } finally {
+        setIsLoadingModels(false);
       }
-
-      setIsLoadingModels(false);
     };
 
     init();
@@ -475,6 +484,10 @@ export function StepVideo() {
                 <SpinnerGap weight="bold" className="size-4 animate-spin" />
                 Loading models...
               </div>
+            ) : modelError ? (
+              <span className="text-sm text-destructive">
+                Error: {modelError}
+              </span>
             ) : models.length > 0 ? (
               <Select value={selectedModel} onValueChange={setSelectedModel}>
                 <SelectTrigger className="w-64">
@@ -490,7 +503,7 @@ export function StepVideo() {
               </Select>
             ) : (
               <span className="text-sm text-muted-foreground">
-                No models available
+                No models available — check your kie.ai API Key
               </span>
             )}
           </div>

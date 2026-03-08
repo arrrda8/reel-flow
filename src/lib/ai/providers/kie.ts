@@ -6,8 +6,18 @@ export interface KieModel {
   description: string;
 }
 
-/** Hardcoded list of available video generation models on kie.ai */
+/** Available video generation models on kie.ai */
 export const KIE_MODELS: KieModel[] = [
+  {
+    id: "kling-3.0",
+    name: "Kling 3.0",
+    description: "Latest Kling model, 3-15s, multi-shot, native audio",
+  },
+  {
+    id: "kling-2.6",
+    name: "Kling 2.6",
+    description: "Image-to-video, 5-10s, native audio",
+  },
   {
     id: "runway",
     name: "Runway Gen-4",
@@ -16,7 +26,7 @@ export const KIE_MODELS: KieModel[] = [
   {
     id: "veo3",
     name: "Veo 3.1",
-    description: "Image-to-video, high quality, 16:9",
+    description: "Google Veo, high quality, 16:9",
   },
 ];
 
@@ -26,15 +36,6 @@ export interface KieGenerateOptions {
   duration?: number;
   prompt?: string;
   aspectRatio?: string;
-  quality?: string;
-}
-
-export interface KieTaskStatus {
-  taskId: string;
-  state: "waiting" | "queuing" | "generating" | "success" | "fail";
-  resultJson?: string;
-  failMsg?: string;
-  progress?: number;
 }
 
 export class KieProvider {
@@ -52,26 +53,47 @@ export class KieProvider {
   }
 
   async generateVideo(options: KieGenerateOptions): Promise<string> {
-    // Select endpoint based on model
-    const endpoint =
-      options.model === "veo3"
-        ? `${KIE_BASE}/veo/generate`
-        : `${KIE_BASE}/runway/generate`;
+    const model = options.model;
+
+    // Kling models use /jobs/createTask with a different body format
+    if (model === "kling-3.0" || model === "kling-2.6") {
+      return this.generateKling(options);
+    }
+
+    // Veo uses /veo/generate
+    if (model === "veo3") {
+      return this.generateVeo(options);
+    }
+
+    // Runway uses /runway/generate
+    return this.generateRunway(options);
+  }
+
+  private async generateKling(options: KieGenerateOptions): Promise<string> {
+    const modelName =
+      options.model === "kling-3.0"
+        ? "kling-3.0/video"
+        : "kling-2.6/image-to-video";
 
     const body: Record<string, unknown> = {
-      prompt: options.prompt || "Animate this image with natural motion",
-      imageUrl: options.imageUrl,
-      duration: options.duration ?? 5,
+      model: modelName,
+      input: {
+        prompt: options.prompt || "Animate this image with natural, cinematic motion",
+        image_urls: [options.imageUrl],
+        sound: false,
+        duration: String(options.duration ?? 5),
+      },
       callBackUrl: "https://example.com/noop",
     };
 
-    if (options.model !== "veo3") {
-      // Runway-specific params
-      body.quality = options.quality || "720p";
-      body.aspectRatio = options.aspectRatio || "16:9";
+    // Kling 3.0 supports mode
+    if (options.model === "kling-3.0") {
+      (body.input as Record<string, unknown>).mode = "std";
+      (body.input as Record<string, unknown>).aspect_ratio =
+        options.aspectRatio || "16:9";
     }
 
-    const res = await fetch(endpoint, {
+    const res = await fetch(`${KIE_BASE}/jobs/createTask`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(body),
@@ -79,11 +101,10 @@ export class KieProvider {
 
     if (!res.ok) {
       const errorText = await res.text();
-      throw new Error(`kie.ai generation error: ${res.status} - ${errorText}`);
+      throw new Error(`kie.ai Kling error: ${res.status} - ${errorText}`);
     }
 
     const data = await res.json();
-
     if (data.code !== 200) {
       throw new Error(data.msg || `kie.ai error code: ${data.code}`);
     }
@@ -91,7 +112,68 @@ export class KieProvider {
     return data.data?.taskId;
   }
 
-  async getTaskStatus(taskId: string): Promise<KieTaskStatus> {
+  private async generateVeo(options: KieGenerateOptions): Promise<string> {
+    const body = {
+      prompt: options.prompt || "Animate this image with natural, cinematic motion",
+      imageUrls: [options.imageUrl],
+      model: "veo3",
+      generationType: "REFERENCE_2_VIDEO",
+      aspect_ratio: options.aspectRatio || "16:9",
+      callBackUrl: "https://example.com/noop",
+    };
+
+    const res = await fetch(`${KIE_BASE}/veo/generate`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`kie.ai Veo error: ${res.status} - ${errorText}`);
+    }
+
+    const data = await res.json();
+    if (data.code !== 200) {
+      throw new Error(data.msg || `kie.ai error code: ${data.code}`);
+    }
+
+    return data.data?.taskId;
+  }
+
+  private async generateRunway(options: KieGenerateOptions): Promise<string> {
+    const body = {
+      prompt: options.prompt || "Animate this image with natural, cinematic motion",
+      imageUrl: options.imageUrl,
+      duration: options.duration ?? 5,
+      quality: "720p",
+      callBackUrl: "https://example.com/noop",
+    };
+
+    const res = await fetch(`${KIE_BASE}/runway/generate`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`kie.ai Runway error: ${res.status} - ${errorText}`);
+    }
+
+    const data = await res.json();
+    if (data.code !== 200) {
+      throw new Error(data.msg || `kie.ai error code: ${data.code}`);
+    }
+
+    return data.data?.taskId;
+  }
+
+  async getTaskStatus(taskId: string): Promise<{
+    state: string;
+    resultJson?: string;
+    failMsg?: string;
+  }> {
     const res = await fetch(
       `${KIE_BASE}/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`,
       { headers: this.headers() }
@@ -102,6 +184,10 @@ export class KieProvider {
     }
 
     const data = await res.json();
+    if (data.code !== 200) {
+      throw new Error(data.msg || `kie.ai status error code: ${data.code}`);
+    }
+
     return data.data;
   }
 
@@ -115,14 +201,17 @@ export class KieProvider {
       const status = await this.getTaskStatus(taskId);
 
       if (status.state === "success") {
-        // Parse resultJson to get video URL
         if (status.resultJson) {
           try {
             const result = JSON.parse(status.resultJson);
-            const url = result.url || result.videoUrl || result.output;
+            // Different models return video URL in different fields
+            const url =
+              result.video_url ||
+              result.videoUrl ||
+              result.url ||
+              result.output;
             if (url) return { videoUrl: url };
           } catch {
-            // Try treating resultJson as direct URL
             if (status.resultJson.startsWith("http")) {
               return { videoUrl: status.resultJson };
             }
