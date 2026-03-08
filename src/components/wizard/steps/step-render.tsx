@@ -5,7 +5,6 @@ import {
   Export,
   GearSix,
   X,
-  Check,
   SpinnerGap,
   DownloadSimple,
   ShareNetwork,
@@ -17,6 +16,7 @@ import {
   InstagramLogo,
   LinkSimple,
   Confetti,
+  WarningCircle,
 } from "@phosphor-icons/react";
 import { StepContent } from "@/components/wizard/step-content";
 import { useWizardStore } from "@/stores/wizard-store";
@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { callAction } from "@/lib/call-action";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -63,16 +64,15 @@ const QUALITIES = [
   { value: "ultra", label: "Ultra", description: "Maximum quality, longest render", sizeFactor: 1.0 },
 ];
 
+// Progress simulation messages shown while the server-side render runs
 const RENDER_OPERATIONS = [
-  "Preparing assets...",
-  "Compositing video clips...",
-  "Applying transitions...",
-  "Rendering voice over...",
+  "Downloading assets...",
+  "Normalizing video segments...",
+  "Concatenating scenes...",
+  "Mixing voice-over audio...",
   "Mixing background music...",
-  "Burning subtitles...",
   "Encoding final output...",
-  "Optimizing file size...",
-  "Finalizing export...",
+  "Uploading to storage...",
 ];
 
 function estimateFileSize(
@@ -81,9 +81,7 @@ function estimateFileSize(
   quality: string,
   durationSecs: number
 ): string {
-  // Base MB per second at 1080p/30fps/high
   const baseMBPerSec = 1.2;
-
   const resFactor =
     resolution === "4K" ? 4 : resolution === "1080p" ? 1 : 0.5;
   const fpsFactor = fps / 30;
@@ -103,7 +101,6 @@ function estimateRenderTime(
   quality: string,
   durationSecs: number
 ): string {
-  // Base: render time = 2x real-time at 1080p/standard
   const baseFactor = 2;
   const resFactor =
     resolution === "4K" ? 4 : resolution === "1080p" ? 1 : 0.5;
@@ -144,7 +141,10 @@ export function StepRender() {
   const [renderProgress, setRenderProgress] = useState(0);
   const [currentOperation, setCurrentOperation] = useState("");
   const [isCompleted, setIsCompleted] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const cancelRef = useRef(false);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const scenes = projectData?.scenes ?? [];
   const totalDuration = scenes.reduce(
@@ -155,67 +155,143 @@ export function StepRender() {
   const fileSize = estimateFileSize(resolution, fps, quality, totalDuration || 60);
   const renderTime = estimateRenderTime(resolution, quality, totalDuration || 60);
 
+  // Simulate progress while the server-side render runs
+  const startProgressSimulation = useCallback(() => {
+    let progress = 0;
+    let opIndex = 0;
+
+    setCurrentOperation(RENDER_OPERATIONS[0]);
+
+    progressIntervalRef.current = setInterval(() => {
+      if (cancelRef.current) return;
+
+      // Gradually increase progress, never reaching 100 (that's set on completion)
+      progress += Math.random() * 2 + 0.5;
+      if (progress > 95) progress = 95;
+
+      // Advance operation label based on progress
+      const newOpIndex = Math.min(
+        Math.floor((progress / 100) * RENDER_OPERATIONS.length),
+        RENDER_OPERATIONS.length - 1
+      );
+      if (newOpIndex !== opIndex) {
+        opIndex = newOpIndex;
+        setCurrentOperation(RENDER_OPERATIONS[opIndex]);
+      }
+
+      setRenderProgress(progress);
+    }, 1000);
+  }, []);
+
+  const stopProgressSimulation = useCallback(() => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+  }, []);
+
   const handleStartRender = useCallback(async () => {
+    const pid = projectData?.id;
+    if (!pid) return;
+
     setIsRendering(true);
     setRenderProgress(0);
     setIsCompleted(false);
+    setRenderError(null);
+    setDownloadUrl(null);
     cancelRef.current = false;
 
-    const totalSteps = RENDER_OPERATIONS.length;
+    // Start progress simulation
+    startProgressSimulation();
 
-    for (let i = 0; i < totalSteps; i++) {
-      if (cancelRef.current) {
-        setIsRendering(false);
-        setRenderProgress(0);
-        setCurrentOperation("");
-        return;
-      }
+    try {
+      // Call server-side render action
+      await callAction<{ renderKey: string }>(
+        "startRender",
+        pid,
+        {
+          resolution,
+          fps,
+          format: format.toLowerCase(),
+          quality,
+        },
+      );
 
-      setCurrentOperation(RENDER_OPERATIONS[i]);
+      if (cancelRef.current) return;
 
-      // Progress per step
-      const stepStart = (i / totalSteps) * 100;
-      const stepEnd = ((i + 1) / totalSteps) * 100;
+      // Render completed — fetch download URL
+      stopProgressSimulation();
+      setRenderProgress(100);
+      setCurrentOperation("Complete!");
 
-      // Animate progress within each step
-      const subSteps = 5;
-      for (let j = 0; j < subSteps; j++) {
-        if (cancelRef.current) {
-          setIsRendering(false);
-          setRenderProgress(0);
-          setCurrentOperation("");
-          return;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        setRenderProgress(
-          stepStart + ((stepEnd - stepStart) * (j + 1)) / subSteps
-        );
-      }
+      const url = await callAction<string | null>(
+        "getRenderDownloadUrl",
+        pid,
+        format.toLowerCase(),
+      );
+
+      setDownloadUrl(url);
+      setIsRendering(false);
+      setIsCompleted(true);
+      markStepCompleted(10);
+    } catch (err) {
+      stopProgressSimulation();
+      setIsRendering(false);
+      setRenderProgress(0);
+      setCurrentOperation("");
+      setRenderError(
+        err instanceof Error ? err.message : "Rendering failed. Please try again."
+      );
     }
-
-    setRenderProgress(100);
-    setCurrentOperation("Complete!");
-    setIsRendering(false);
-    setIsCompleted(true);
-    markStepCompleted(10);
-  }, [markStepCompleted]);
+  }, [projectData, resolution, fps, format, quality, markStepCompleted, startProgressSimulation, stopProgressSimulation]);
 
   const handleCancel = useCallback(() => {
     cancelRef.current = true;
-  }, []);
+    stopProgressSimulation();
+    setIsRendering(false);
+    setRenderProgress(0);
+    setCurrentOperation("");
+  }, [stopProgressSimulation]);
+
+  const handleDownload = useCallback(async () => {
+    if (downloadUrl) {
+      window.open(downloadUrl, "_blank");
+      return;
+    }
+
+    // Try to fetch download URL if not available
+    const pid = projectData?.id;
+    if (!pid) return;
+    try {
+      const url = await callAction<string | null>(
+        "getRenderDownloadUrl",
+        pid,
+        format.toLowerCase(),
+      );
+      if (url) {
+        setDownloadUrl(url);
+        window.open(url, "_blank");
+      }
+    } catch {
+      // Silently fail — button will just not work
+    }
+  }, [downloadUrl, projectData, format]);
 
   // Remaining time estimate during render
   const remainingTime = (() => {
     if (!isRendering || renderProgress === 0) return "";
-    // Rough estimate based on progress
-    const elapsed = renderProgress;
-    const remaining = 100 - elapsed;
-    const factor = remaining / elapsed;
-    const estimatedSecsLeft = factor * 9; // ~9 seconds total mock render
+    const remaining = 100 - renderProgress;
+    const factor = remaining / Math.max(renderProgress, 1);
+    // Estimate based on elapsed progress rate
+    const elapsedSecs = renderProgress * 0.5; // rough approximation
+    const estimatedSecsLeft = factor * elapsedSecs;
     if (estimatedSecsLeft > 60) {
       return `~${Math.floor(estimatedSecsLeft / 60)}m ${Math.round(estimatedSecsLeft % 60)}s remaining`;
     }
-    return `~${Math.round(estimatedSecsLeft)}s remaining`;
+    if (estimatedSecsLeft > 5) {
+      return `~${Math.round(estimatedSecsLeft)}s remaining`;
+    }
+    return "Almost done...";
   })();
 
   if (!projectData) return <StepContent isLoading />;
@@ -223,6 +299,32 @@ export function StepRender() {
   return (
     <StepContent>
       <div className="space-y-6">
+        {/* Error state */}
+        {renderError && !isRendering && !isCompleted && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+            <div className="flex justify-center mb-3">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+                <WarningCircle weight="duotone" className="size-7 text-destructive" />
+              </div>
+            </div>
+            <h3 className="font-heading text-lg font-semibold text-foreground">
+              Rendering Failed
+            </h3>
+            <p className="mt-1 text-sm text-muted-foreground max-w-md mx-auto">
+              {renderError}
+            </p>
+            <div className="mt-4">
+              <Button
+                variant="outline"
+                onClick={() => setRenderError(null)}
+                className="gap-1.5"
+              >
+                Try Again
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Completed state */}
         {isCompleted && (
           <div className="rounded-xl border border-success/30 bg-success/5 p-6 text-center">
@@ -242,6 +344,7 @@ export function StepRender() {
               <Button
                 size="lg"
                 className="gap-2"
+                onClick={handleDownload}
               >
                 <DownloadSimple weight="duotone" className="size-5" />
                 Download Video
@@ -314,7 +417,7 @@ export function StepRender() {
                 Rendering Your Video
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Please do not close this window.
+                FFmpeg is processing your video on the server. Please do not close this window.
               </p>
             </div>
 
@@ -352,7 +455,7 @@ export function StepRender() {
         )}
 
         {/* Render settings form (hidden during render and after completion) */}
-        {!isRendering && !isCompleted && (
+        {!isRendering && !isCompleted && !renderError && (
           <>
             <div className="space-y-4">
               <div className="flex items-center gap-2">
@@ -550,7 +653,10 @@ export function StepRender() {
           <div className="flex justify-center">
             <Button
               variant="outline"
-              onClick={() => setIsCompleted(false)}
+              onClick={() => {
+                setIsCompleted(false);
+                setDownloadUrl(null);
+              }}
               className="gap-1.5"
             >
               <GearSix weight="duotone" className="size-3.5" />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Play,
   Pause,
@@ -12,6 +12,9 @@ import {
   MusicNotes,
   Check,
   Image,
+  Spinner,
+  SkipForward,
+  SkipBack,
 } from "@phosphor-icons/react";
 import { StepContent } from "@/components/wizard/step-content";
 import { useWizardStore } from "@/stores/wizard-store";
@@ -19,6 +22,22 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import type { PreviewData, PreviewScene } from "@/lib/preview-actions";
+
+// ---------------------------------------------------------------------------
+// API helper
+// ---------------------------------------------------------------------------
+
+async function callAction<T>(action: string, ...args: unknown[]): Promise<T> {
+  const res = await fetch("/api/actions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, args }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.error ?? "Action failed");
+  return data.result as T;
+}
 
 // ---------------------------------------------------------------------------
 // Timeline Marker
@@ -63,30 +82,17 @@ function TimelineMarker({
 // Scene Thumbnail
 // ---------------------------------------------------------------------------
 
-const THUMB_COLORS = [
-  "bg-slate-700/50",
-  "bg-zinc-700/50",
-  "bg-neutral-700/50",
-  "bg-stone-700/50",
-  "bg-gray-700/50",
-  "bg-slate-600/50",
-];
-
 function SceneThumbnail({
+  scene,
   index,
-  narrationText,
-  duration,
   isActive,
   onClick,
 }: {
+  scene: PreviewScene;
   index: number;
-  narrationText: string | null;
-  duration: number | null;
   isActive: boolean;
   onClick: () => void;
 }) {
-  const thumbColor = THUMB_COLORS[index % THUMB_COLORS.length];
-
   return (
     <button
       type="button"
@@ -99,15 +105,19 @@ function SceneThumbnail({
       )}
     >
       {/* Thumbnail */}
-      <div
-        className={cn(
-          "relative aspect-video w-20 shrink-0 overflow-hidden rounded-md",
-          thumbColor
+      <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-md bg-slate-700/50">
+        {scene.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={scene.imageUrl}
+            alt={`Scene ${index + 1}`}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Image weight="duotone" className="size-4 text-white/40" />
+          </div>
         )}
-      >
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Image weight="duotone" className="size-4 text-white/40" />
-        </div>
         {isActive && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20">
             <Play weight="fill" className="size-4 text-white" />
@@ -115,7 +125,7 @@ function SceneThumbnail({
         )}
         <div className="absolute bottom-0.5 right-0.5">
           <span className="rounded bg-black/60 px-1 py-0.5 text-[9px] font-mono text-white">
-            {duration ?? 0}s
+            {scene.duration}s
           </span>
         </div>
       </div>
@@ -126,8 +136,19 @@ function SceneThumbnail({
           Scene {index + 1}
         </p>
         <p className="text-xs text-muted-foreground line-clamp-2">
-          {narrationText || "No narration"}
+          {scene.narration || "No narration"}
         </p>
+        <div className="mt-1 flex gap-1.5">
+          {scene.videoUrl && (
+            <span className="rounded bg-green-500/10 px-1 py-0.5 text-[9px] text-green-500">Video</span>
+          )}
+          {scene.imageUrl && !scene.videoUrl && (
+            <span className="rounded bg-blue-500/10 px-1 py-0.5 text-[9px] text-blue-500">Image</span>
+          )}
+          {scene.audioUrl && (
+            <span className="rounded bg-purple-500/10 px-1 py-0.5 text-[9px] text-purple-500">Audio</span>
+          )}
+        </div>
       </div>
     </button>
   );
@@ -141,47 +162,207 @@ export function StepPreview() {
   const projectData = useWizardStore((s) => s.projectData);
   const markStepCompleted = useWizardStore((s) => s.markStepCompleted);
 
+  const [previewData, setPreviewData] = useState<PreviewData | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeScene, setActiveScene] = useState(0);
 
-  const scenes = projectData?.scenes ?? [];
-  const totalDuration = scenes.reduce(
-    (sum, s) => sum + (s.estimatedDuration ?? 0),
-    0
-  );
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const aspectRatio = projectData?.aspectRatio ?? "16:9";
+  const projectId = projectData?.id;
+
+  // Load preview data on mount
+  useEffect(() => {
+    if (!projectId) return;
+
+    let cancelled = false;
+    setIsLoadingPreview(true);
+    setLoadError(null);
+
+    callAction<PreviewData>("loadPreviewData", projectId)
+      .then((data) => {
+        if (!cancelled) {
+          setPreviewData(data);
+          setIsLoadingPreview(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setLoadError(err.message);
+          setIsLoadingPreview(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  const previewScenes = previewData?.scenes ?? [];
+  const totalDuration = previewData?.totalDuration ?? 0;
+  const subtitleStyle = previewData?.subtitleStyle;
+  const aspectRatio = previewData?.aspectRatio ?? projectData?.aspectRatio ?? "16:9";
   const isPortrait = aspectRatio === "9:16" || aspectRatio === "4:5";
 
-  const handlePlayToggle = useCallback(() => {
-    setIsPlaying((prev) => !prev);
-    if (!isPlaying) {
-      // Mock: auto-advance through scenes
-      let current = activeScene;
-      const interval = setInterval(() => {
-        current++;
-        if (current >= scenes.length) {
-          clearInterval(interval);
-          setIsPlaying(false);
-          setActiveScene(0);
-          return;
-        }
-        setActiveScene(current);
-      }, 2000);
+  const currentScene = previewScenes[activeScene] ?? null;
 
-      // Cleanup after max time
-      setTimeout(() => {
-        clearInterval(interval);
-        setIsPlaying(false);
-      }, scenes.length * 2000 + 100);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  // Stop playback helpers
+  const stopPlayback = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
-  }, [isPlaying, activeScene, scenes.length]);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  }, []);
+
+  // Advance to next scene
+  const advanceScene = useCallback(() => {
+    setActiveScene((prev) => {
+      const next = prev + 1;
+      if (next >= previewScenes.length) {
+        setIsPlaying(false);
+        stopPlayback();
+        return 0;
+      }
+      return next;
+    });
+  }, [previewScenes.length, stopPlayback]);
+
+  // Play current scene assets
+  useEffect(() => {
+    if (!isPlaying || !currentScene) return;
+
+    // Play audio if available
+    if (currentScene.audioUrl) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      const audio = new Audio(currentScene.audioUrl);
+      audioRef.current = audio;
+      audio.play().catch(() => {
+        // Audio play failed (e.g., autoplay blocked) — fall back to timer
+      });
+      audio.onended = () => {
+        advanceScene();
+      };
+    } else {
+      // No audio — use duration timer
+      timerRef.current = setTimeout(() => {
+        advanceScene();
+      }, currentScene.duration * 1000);
+    }
+
+    // Play video if available
+    if (videoRef.current && currentScene.videoUrl) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch(() => {});
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      // Don't pause audio here — let onended handle it
+    };
+  }, [isPlaying, activeScene, currentScene, advanceScene]);
+
+  const handlePlayToggle = useCallback(() => {
+    if (isPlaying) {
+      setIsPlaying(false);
+      stopPlayback();
+    } else {
+      setIsPlaying(true);
+    }
+  }, [isPlaying, stopPlayback]);
+
+  const handleSceneClick = useCallback((index: number) => {
+    stopPlayback();
+    setIsPlaying(false);
+    setActiveScene(index);
+  }, [stopPlayback]);
+
+  const handlePrevScene = useCallback(() => {
+    if (activeScene > 0) {
+      handleSceneClick(activeScene - 1);
+    }
+  }, [activeScene, handleSceneClick]);
+
+  const handleNextScene = useCallback(() => {
+    if (activeScene < previewScenes.length - 1) {
+      handleSceneClick(activeScene + 1);
+    }
+  }, [activeScene, previewScenes.length, handleSceneClick]);
 
   const handleApprove = useCallback(() => {
     markStepCompleted(9);
   }, [markStepCompleted]);
 
+  // Subtitle position style
+  const subtitlePositionClass = (() => {
+    const pos = (subtitleStyle as { position?: string } | null)?.position ?? "bottom";
+    if (pos === "top") return "top-4 inset-x-4";
+    if (pos === "center") return "top-1/2 -translate-y-1/2 inset-x-4";
+    return "bottom-4 inset-x-4"; // bottom or custom
+  })();
+
   if (!projectData) return <StepContent isLoading />;
+
+  if (isLoadingPreview) {
+    return (
+      <StepContent>
+        <div className="flex flex-col items-center justify-center gap-4 py-20">
+          <Spinner className="size-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading preview assets...</p>
+        </div>
+      </StepContent>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <StepContent>
+        <div className="flex flex-col items-center justify-center gap-4 py-20">
+          <p className="text-sm text-destructive">{loadError}</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setIsLoadingPreview(true);
+              setLoadError(null);
+              callAction<PreviewData>("loadPreviewData", projectId!)
+                .then(setPreviewData)
+                .catch((err) => setLoadError(err.message))
+                .finally(() => setIsLoadingPreview(false));
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      </StepContent>
+    );
+  }
 
   return (
     <StepContent>
@@ -199,7 +380,7 @@ export function StepPreview() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* LEFT: Main preview area */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Video preview */}
+            {/* Video / image preview */}
             <div className="flex justify-center">
               <div
                 className={cn(
@@ -209,23 +390,61 @@ export function StepPreview() {
                     : "aspect-video w-full"
                 )}
               >
-                {/* Scene background */}
-                <div
-                  className={cn(
-                    "absolute inset-0 transition-all duration-500",
-                    THUMB_COLORS[activeScene % THUMB_COLORS.length]
-                  )}
-                />
+                {/* Scene content */}
+                {currentScene?.videoUrl ? (
+                  <video
+                    ref={videoRef}
+                    key={`video-${activeScene}`}
+                    src={currentScene.videoUrl}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    muted
+                    playsInline
+                    loop={!isPlaying}
+                  />
+                ) : currentScene?.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={`img-${activeScene}`}
+                    src={currentScene.imageUrl}
+                    alt={`Scene ${activeScene + 1}`}
+                    className="absolute inset-0 h-full w-full object-cover transition-opacity duration-500"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-800">
+                    <Image weight="duotone" className="size-12 text-white/20" />
+                  </div>
+                )}
 
                 {/* Scene number overlay */}
                 <div className="absolute top-3 left-3">
                   <Badge className="bg-black/50 text-white text-xs backdrop-blur-sm border-0">
-                    Scene {activeScene + 1} / {scenes.length || 1}
+                    Scene {activeScene + 1} / {previewScenes.length || 1}
                   </Badge>
                 </div>
 
-                {/* Play / Pause button overlay */}
-                <div className="absolute inset-0 flex items-center justify-center">
+                {/* Audio indicator */}
+                {currentScene?.audioUrl && (
+                  <div className="absolute top-3 right-3">
+                    <Badge className="bg-black/50 text-white text-xs backdrop-blur-sm border-0 gap-1">
+                      <SpeakerHigh weight="fill" className="size-3" />
+                      Audio
+                    </Badge>
+                  </div>
+                )}
+
+                {/* Play / Pause / Skip controls */}
+                <div className="absolute inset-0 flex items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handlePrevScene}
+                    className={cn(
+                      "flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-sm transition-all hover:bg-black/50",
+                      activeScene === 0 && "opacity-30 pointer-events-none"
+                    )}
+                  >
+                    <SkipBack weight="fill" className="size-4 text-white" />
+                  </button>
+
                   <button
                     type="button"
                     onClick={handlePlayToggle}
@@ -242,14 +461,44 @@ export function StepPreview() {
                       <Play weight="fill" className="size-7 text-white ml-1" />
                     )}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={handleNextScene}
+                    className={cn(
+                      "flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-sm transition-all hover:bg-black/50",
+                      activeScene >= previewScenes.length - 1 && "opacity-30 pointer-events-none"
+                    )}
+                  >
+                    <SkipForward weight="fill" className="size-4 text-white" />
+                  </button>
                 </div>
 
-                {/* Mock subtitle */}
-                {scenes[activeScene]?.narrationText && (
-                  <div className="absolute bottom-4 inset-x-4">
-                    <div className="rounded-lg bg-black/50 px-3 py-2 backdrop-blur-sm text-center">
-                      <p className="text-xs text-white font-medium line-clamp-2">
-                        {scenes[activeScene].narrationText}
+                {/* Subtitle overlay */}
+                {currentScene?.narration && (
+                  <div className={cn("absolute", subtitlePositionClass)}>
+                    <div
+                      className="rounded-lg px-3 py-2 text-center"
+                      style={{
+                        backgroundColor:
+                          (subtitleStyle as { background?: string } | null)?.background === "none"
+                            ? "transparent"
+                            : "rgba(0,0,0,0.5)",
+                        backdropFilter:
+                          (subtitleStyle as { background?: string } | null)?.background === "blur"
+                            ? "blur(8px)"
+                            : undefined,
+                      }}
+                    >
+                      <p
+                        className="text-xs font-medium line-clamp-3"
+                        style={{
+                          color: (subtitleStyle as { color?: string } | null)?.color ?? "#ffffff",
+                          fontFamily: (subtitleStyle as { fontFamily?: string } | null)?.fontFamily ?? "inherit",
+                          fontSize: `${(subtitleStyle as { fontSize?: number } | null)?.fontSize ?? 14}px`,
+                        }}
+                      >
+                        {currentScene.narration}
                       </p>
                     </div>
                   </div>
@@ -258,7 +507,7 @@ export function StepPreview() {
             </div>
 
             {/* Timeline */}
-            {scenes.length > 0 && (
+            {previewScenes.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-muted-foreground">
@@ -269,17 +518,17 @@ export function StepPreview() {
                   </span>
                 </div>
                 <div className="flex gap-0.5 rounded-lg border border-border bg-surface/50 p-1">
-                  {scenes.map((scene, index) => {
+                  {previewScenes.map((scene, index) => {
                     const pct = totalDuration > 0
-                      ? ((scene.estimatedDuration ?? 0) / totalDuration) * 100
-                      : 100 / scenes.length;
+                      ? (scene.duration / totalDuration) * 100
+                      : 100 / previewScenes.length;
 
                     return (
                       <TimelineMarker
-                        key={scene.id}
+                        key={index}
                         index={index}
                         isActive={index === activeScene}
-                        onClick={() => setActiveScene(index)}
+                        onClick={() => handleSceneClick(index)}
                         widthPercent={pct}
                       />
                     );
@@ -332,20 +581,19 @@ export function StepPreview() {
                 </h3>
               </div>
               <Badge variant="outline" className="text-xs">
-                {scenes.length}
+                {previewScenes.length}
               </Badge>
             </div>
 
             <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-              {scenes.length > 0 ? (
-                scenes.map((scene, index) => (
+              {previewScenes.length > 0 ? (
+                previewScenes.map((scene, index) => (
                   <SceneThumbnail
-                    key={scene.id}
+                    key={index}
+                    scene={scene}
                     index={index}
-                    narrationText={scene.narrationText}
-                    duration={scene.estimatedDuration}
                     isActive={index === activeScene}
-                    onClick={() => setActiveScene(index)}
+                    onClick={() => handleSceneClick(index)}
                   />
                 ))
               ) : (
@@ -367,11 +615,21 @@ export function StepPreview() {
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <FilmStrip weight="duotone" className="size-3 text-primary" />
-                  <span>{scenes.length} video clips</span>
+                  <span>
+                    {previewScenes.filter((s) => s.videoUrl).length} video clips
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Image weight="duotone" className="size-3 text-primary" />
+                  <span>
+                    {previewScenes.filter((s) => s.imageUrl).length} images
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <SpeakerHigh weight="duotone" className="size-3 text-primary" />
-                  <span>Voice over track</span>
+                  <span>
+                    {previewScenes.filter((s) => s.audioUrl).length} voice overs
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <MusicNotes weight="duotone" className="size-3 text-primary" />

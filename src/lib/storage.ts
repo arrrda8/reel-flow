@@ -1,5 +1,7 @@
 import * as Minio from "minio";
 import { createHmac } from "crypto";
+import { createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
 
 let _minioClient: Minio.Client | null = null;
 
@@ -41,10 +43,11 @@ const ALLOWED_MIME_TYPES = new Set([
   "audio/ogg",
   "video/mp4",
   "video/webm",
+  "video/quicktime",
   "application/pdf",
 ]);
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB (supports rendered videos)
 
 export async function uploadFile(
   key: string,
@@ -96,6 +99,16 @@ export async function deleteFile(key: string): Promise<void> {
 }
 
 /**
+ * Download a file from MinIO directly to a local file path.
+ * Used by ffmpeg-render to stage assets for rendering.
+ */
+export async function downloadFileToPath(key: string, destPath: string): Promise<void> {
+  const nodeStream = await getMinioClient().getObject(BUCKET, key);
+  const writeStream = createWriteStream(destPath);
+  await pipeline(nodeStream, writeStream);
+}
+
+/**
  * Get a readable stream for a file, with content type detection.
  * Used by the /api/storage proxy route to serve files to the browser.
  */
@@ -144,6 +157,7 @@ function guessContentType(key: string): string {
   if (key.endsWith(".ogg")) return "audio/ogg";
   if (key.endsWith(".mp4")) return "video/mp4";
   if (key.endsWith(".webm")) return "video/webm";
+  if (key.endsWith(".mov")) return "video/quicktime";
   if (key.endsWith(".png")) return "image/png";
   if (key.endsWith(".jpg") || key.endsWith(".jpeg")) return "image/jpeg";
   if (key.endsWith(".webp")) return "image/webp";

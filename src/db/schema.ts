@@ -70,8 +70,11 @@ export type SubtitleStyle = {
   fontFamily: string;
   fontSize: number;
   color: string;
-  position: "top" | "center" | "bottom";
-  background: string;
+  position: "top" | "center" | "bottom" | "custom";
+  customX?: number; // 0-100 percent from left
+  customY?: number; // 0-100 percent from top
+  background: "none" | "solid" | "semi-transparent" | "blur" | "custom";
+  backgroundColor?: string; // hex color when background is "custom"
   animation: "none" | "fade" | "slide" | "typewriter";
 };
 
@@ -82,6 +85,7 @@ export type VoiceSettings = {
 };
 
 export type MusicSettings = {
+  trackId: string | null;
   volume: number;
   fadeIn: boolean;
   fadeOut: boolean;

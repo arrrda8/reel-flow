@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { updateProfile } from "@/lib/settings-actions";
 import type { UserProfile } from "@/lib/settings-actions";
+import { notifyLocaleChange } from "@/i18n";
 
 interface ProfileTabProps {
   profile: UserProfile;
@@ -49,6 +50,9 @@ export function ProfileTab({ profile }: ProfileTabProps) {
     startTransition(async () => {
       const result = await updateProfile(formData);
       if (result.success) {
+        // Sync locale cookie so client-side translations update immediately
+        document.cookie = `locale=${locale}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+        notifyLocaleChange();
         toast.success("Profile updated successfully");
       } else {
         toast.error(result.error);

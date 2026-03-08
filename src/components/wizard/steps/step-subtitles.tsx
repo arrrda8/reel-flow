@@ -51,6 +51,7 @@ const POSITIONS = [
   { value: "top" as const, label: "Top" },
   { value: "center" as const, label: "Center" },
   { value: "bottom" as const, label: "Bottom" },
+  { value: "custom" as const, label: "Custom" },
 ];
 
 const BACKGROUNDS = [
@@ -58,6 +59,7 @@ const BACKGROUNDS = [
   { value: "solid", label: "Solid Black" },
   { value: "semi-transparent", label: "Semi-Transparent" },
   { value: "blur", label: "Blur" },
+  { value: "custom", label: "Custom Color" },
 ];
 
 const ANIMATIONS = [
@@ -67,7 +69,8 @@ const ANIMATIONS = [
   { value: "typewriter" as const, label: "Typewriter" },
 ];
 
-type Position = "top" | "center" | "bottom";
+type Position = "top" | "center" | "bottom" | "custom";
+type Background = "none" | "solid" | "semi-transparent" | "blur" | "custom";
 type Animation = "none" | "fade" | "slide" | "typewriter";
 
 const SAMPLE_TEXT = "This is how your subtitles will look in the final video.";
@@ -81,18 +84,27 @@ function SubtitlePreview({
   fontSize,
   color,
   position,
+  customX,
+  customY,
   background,
+  backgroundColor,
   animation,
 }: {
   fontFamily: string;
   fontSize: number;
   color: string;
   position: Position;
-  background: string;
+  customX?: number;
+  customY?: number;
+  background: Background;
+  backgroundColor?: string;
   animation: Animation;
 }) {
-  const positionClass =
-    position === "top"
+  const isCustomPosition = position === "custom";
+
+  const positionClass = isCustomPosition
+    ? ""
+    : position === "top"
       ? "items-start pt-6"
       : position === "center"
         ? "items-center"
@@ -106,6 +118,8 @@ function SubtitlePreview({
         return "bg-black/50 px-4 py-2 rounded-lg";
       case "blur":
         return "bg-black/30 backdrop-blur-md px-4 py-2 rounded-lg";
+      case "custom":
+        return "px-4 py-2 rounded-lg";
       default:
         return "";
     }
@@ -122,9 +136,48 @@ function SubtitlePreview({
     }
   })();
 
+  const customBgInlineStyle =
+    background === "custom" && backgroundColor
+      ? { backgroundColor }
+      : undefined;
+
+  if (isCustomPosition) {
+    return (
+      <div className="relative h-full w-full">
+        <div
+          className={cn(bgStyle, animationClass, "absolute")}
+          style={{
+            left: `${customX ?? 50}%`,
+            top: `${customY ?? 50}%`,
+            transform: "translate(-50%, -50%)",
+            ...customBgInlineStyle,
+          }}
+        >
+          <p
+            style={{
+              fontFamily,
+              fontSize: `${fontSize}px`,
+              color,
+              textShadow:
+                background === "none"
+                  ? "0 2px 4px rgba(0,0,0,0.8), 0 0px 2px rgba(0,0,0,0.5)"
+                  : "none",
+            }}
+            className="text-center font-semibold leading-snug whitespace-nowrap"
+          >
+            {SAMPLE_TEXT}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={cn("flex h-full justify-center", positionClass)}>
-      <div className={cn(bgStyle, animationClass)}>
+      <div
+        className={cn(bgStyle, animationClass)}
+        style={customBgInlineStyle}
+      >
         <p
           style={{
             fontFamily,
@@ -164,8 +217,17 @@ export function StepSubtitles() {
   const [position, setPosition] = useState<Position>(
     projectData?.subtitleStyle?.position ?? "bottom"
   );
-  const [background, setBackground] = useState(
-    projectData?.subtitleStyle?.background ?? "semi-transparent"
+  const [customX, setCustomX] = useState(
+    projectData?.subtitleStyle?.customX ?? 50
+  );
+  const [customY, setCustomY] = useState(
+    projectData?.subtitleStyle?.customY ?? 50
+  );
+  const [background, setBackground] = useState<Background>(
+    (projectData?.subtitleStyle?.background as Background) ?? "semi-transparent"
+  );
+  const [backgroundColor, setBackgroundColor] = useState(
+    projectData?.subtitleStyle?.backgroundColor ?? "#000000"
   );
   const [animation, setAnimation] = useState<Animation>(
     projectData?.subtitleStyle?.animation ?? "none"
@@ -266,6 +328,15 @@ export function StepSubtitles() {
                   </button>
                 ))}
               </div>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-muted-foreground">Custom:</span>
+                <input
+                  type="color"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  className="w-8 h-8 rounded border border-border cursor-pointer"
+                />
+              </div>
             </div>
 
             {/* Position */}
@@ -291,6 +362,48 @@ export function StepSubtitles() {
                   </button>
                 ))}
               </div>
+              {position === "custom" && (
+                <div className="space-y-3 mt-3 rounded-lg border border-border bg-surface/50 p-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium text-muted-foreground">
+                        Horizontal Position (X)
+                      </Label>
+                      <span className="font-mono text-xs text-primary">{customX}%</span>
+                    </div>
+                    <Slider
+                      value={[customX]}
+                      onValueChange={([val]) => setCustomX(val)}
+                      min={0}
+                      max={100}
+                      step={1}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Left</span>
+                      <span>Right</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium text-muted-foreground">
+                        Vertical Position (Y)
+                      </Label>
+                      <span className="font-mono text-xs text-primary">{customY}%</span>
+                    </div>
+                    <Slider
+                      value={[customY]}
+                      onValueChange={([val]) => setCustomY(val)}
+                      min={0}
+                      max={100}
+                      step={1}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Top</span>
+                      <span>Bottom</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Background */}
@@ -298,7 +411,7 @@ export function StepSubtitles() {
               <Label className="text-xs font-medium text-muted-foreground">
                 Background
               </Label>
-              <Select value={background} onValueChange={setBackground}>
+              <Select value={background} onValueChange={(val) => setBackground(val as Background)}>
                 <SelectTrigger className="w-full bg-surface/50">
                   <SelectValue />
                 </SelectTrigger>
@@ -310,6 +423,18 @@ export function StepSubtitles() {
                   ))}
                 </SelectContent>
               </Select>
+              {background === "custom" && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-muted-foreground">Background Color:</span>
+                  <input
+                    type="color"
+                    value={backgroundColor}
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                    className="w-8 h-8 rounded border border-border cursor-pointer"
+                  />
+                  <span className="font-mono text-xs text-muted-foreground">{backgroundColor}</span>
+                </div>
+              )}
             </div>
 
             {/* Animation */}
@@ -360,7 +485,10 @@ export function StepSubtitles() {
                   fontSize={fontSize}
                   color={color}
                   position={position}
+                  customX={customX}
+                  customY={customY}
                   background={background}
+                  backgroundColor={backgroundColor}
                   animation={animation}
                 />
               </div>

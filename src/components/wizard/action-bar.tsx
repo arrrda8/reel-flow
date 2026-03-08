@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { TOTAL_STEPS } from "@/lib/wizard-steps";
 import { useWizardStore } from "@/stores/wizard-store";
+import { useTranslations } from "@/i18n";
 
 // ---------------------------------------------------------------------------
 // Save status indicator
@@ -21,12 +22,13 @@ import { useWizardStore } from "@/stores/wizard-store";
 function SaveIndicator() {
   const isSaving = useWizardStore((s) => s.isSaving);
   const lastSavedAt = useWizardStore((s) => s.lastSavedAt);
+  const t = useTranslations();
 
   if (isSaving) {
     return (
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <SpinnerGap weight="bold" className="size-3.5 animate-spin" />
-        <span>Saving...</span>
+        <span>{t.wizard.saving}</span>
       </div>
     );
   }
@@ -35,7 +37,7 @@ function SaveIndicator() {
     return (
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <CloudCheck weight="duotone" className="size-3.5 text-success" />
-        <span>All changes saved</span>
+        <span>{t.wizard.saved}</span>
       </div>
     );
   }
@@ -43,7 +45,7 @@ function SaveIndicator() {
   return (
     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
       <CloudSlash weight="duotone" className="size-3.5" />
-      <span>Not saved yet</span>
+      <span>{t.wizard.notSaved}</span>
     </div>
   );
 }
@@ -60,6 +62,7 @@ export function WizardActionBar() {
   const prevStep = useWizardStore((s) => s.prevStep);
   const markStepCompleted = useWizardStore((s) => s.markStepCompleted);
   const setSaving = useWizardStore((s) => s.setSaving);
+  const t = useTranslations();
 
   const [isPending, setIsPending] = useState(false);
 
@@ -119,7 +122,7 @@ export function WizardActionBar() {
             className="gap-2 text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft weight="duotone" className="size-4" />
-            Previous
+            {t.common.previous}
           </Button>
         )}
       </div>
@@ -148,7 +151,7 @@ export function WizardActionBar() {
             ) : (
               <Rocket weight="duotone" className="size-4" />
             )}
-            Start Render
+            {t.wizard.startRender}
           </Button>
         ) : (
           <Button
@@ -161,7 +164,7 @@ export function WizardActionBar() {
               <SpinnerGap weight="bold" className="size-4 animate-spin" />
             ) : (
               <>
-                Next
+                {t.common.next}
                 <ArrowRight weight="duotone" className="size-4" />
               </>
             )}

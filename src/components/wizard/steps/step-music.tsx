@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MusicNotes,
   Play,
@@ -10,6 +10,7 @@ import {
   Metronome,
   Waveform,
   SpeakerHigh,
+  Warning,
 } from "@phosphor-icons/react";
 import { StepContent } from "@/components/wizard/step-content";
 import { useWizardStore } from "@/stores/wizard-store";
@@ -22,90 +23,111 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// Mock music tracks
+// CC0 / royalty-free music tracks with real audio URLs
+// Sources: freepd.com (all CC0 public domain)
 // ---------------------------------------------------------------------------
 
-interface MockTrack {
+interface MusicTrack {
   id: string;
   name: string;
+  artist: string;
   genre: string;
   mood: string;
   bpm: number;
   durationMs: number;
+  audioUrl: string;
 }
 
-const MOCK_TRACKS: MockTrack[] = [
+const MUSIC_TRACKS: MusicTrack[] = [
   {
     id: "track-1",
-    name: "Electric Horizons",
+    name: "Stomper",
+    artist: "Kevin MacLeod",
     genre: "Electronic",
     mood: "Energetic",
     bpm: 128,
-    durationMs: 180000,
+    durationMs: 123000,
+    audioUrl: "https://freepd.com/music/Stomper.mp3",
   },
   {
     id: "track-2",
-    name: "Gentle Morning",
-    genre: "Ambient",
-    mood: "Calm",
-    bpm: 72,
-    durationMs: 240000,
-  },
-  {
-    id: "track-3",
-    name: "Urban Pulse",
-    genre: "Hip-Hop",
-    mood: "Motivating",
-    bpm: 95,
-    durationMs: 210000,
-  },
-  {
-    id: "track-4",
-    name: "Cinematic Rise",
-    genre: "Orchestral",
-    mood: "Dramatic",
-    bpm: 60,
-    durationMs: 300000,
-  },
-  {
-    id: "track-5",
-    name: "Sunshine Vibes",
+    name: "Carefree",
+    artist: "Kevin MacLeod",
     genre: "Pop",
     mood: "Uplifting",
     bpm: 120,
-    durationMs: 195000,
+    durationMs: 153000,
+    audioUrl: "https://freepd.com/music/Carefree.mp3",
+  },
+  {
+    id: "track-3",
+    name: "Bossa Antigua",
+    artist: "Kevin MacLeod",
+    genre: "Jazz",
+    mood: "Calm",
+    bpm: 85,
+    durationMs: 200000,
+    audioUrl: "https://freepd.com/music/Bossa%20Antigua.mp3",
+  },
+  {
+    id: "track-4",
+    name: "Cipher",
+    artist: "Kevin MacLeod",
+    genre: "Electronic",
+    mood: "Mysterious",
+    bpm: 110,
+    durationMs: 147000,
+    audioUrl: "https://freepd.com/music/Cipher.mp3",
+  },
+  {
+    id: "track-5",
+    name: "Inspired",
+    artist: "Kevin MacLeod",
+    genre: "Orchestral",
+    mood: "Dramatic",
+    bpm: 60,
+    durationMs: 222000,
+    audioUrl: "https://freepd.com/music/Inspired.mp3",
   },
   {
     id: "track-6",
-    name: "Midnight Jazz",
-    genre: "Jazz",
-    mood: "Mysterious",
-    bpm: 85,
-    durationMs: 270000,
+    name: "Heartland",
+    artist: "Kevin MacLeod",
+    genre: "Acoustic",
+    mood: "Motivating",
+    bpm: 95,
+    durationMs: 180000,
+    audioUrl: "https://freepd.com/music/Heartland.mp3",
   },
   {
     id: "track-7",
-    name: "Tech Innovation",
-    genre: "Electronic",
-    mood: "Informative",
-    bpm: 110,
-    durationMs: 150000,
-  },
-  {
-    id: "track-8",
-    name: "Acoustic Journey",
-    genre: "Acoustic",
-    mood: "Melancholic",
-    bpm: 78,
-    durationMs: 225000,
-  },
-  {
-    id: "track-9",
-    name: "Power Drive",
+    name: "Happy Rock",
+    artist: "Kevin MacLeod",
     genre: "Rock",
     mood: "Energetic",
     bpm: 140,
-    durationMs: 195000,
+    durationMs: 105000,
+    audioUrl: "https://freepd.com/music/Happy%20Rock.mp3",
+  },
+  {
+    id: "track-8",
+    name: "Dreamy Flashback",
+    artist: "Kevin MacLeod",
+    genre: "Ambient",
+    mood: "Melancholic",
+    bpm: 72,
+    durationMs: 216000,
+    audioUrl: "https://freepd.com/music/Dreamy%20Flashback.mp3",
+  },
+  {
+    id: "track-9",
+    name: "Funky Chunk",
+    artist: "Kevin MacLeod",
+    genre: "Hip-Hop",
+    mood: "Informative",
+    bpm: 100,
+    durationMs: 132000,
+    audioUrl: "https://freepd.com/music/Funky%20Chunk.mp3",
   },
 ];
 
@@ -124,12 +146,14 @@ function TrackCard({
   track,
   isSelected,
   isPlaying,
+  hasError,
   onSelect,
   onTogglePlay,
 }: {
-  track: MockTrack;
+  track: MusicTrack;
   isSelected: boolean;
   isPlaying: boolean;
+  hasError: boolean;
   onSelect: () => void;
   onTogglePlay: () => void;
 }) {
@@ -159,12 +183,16 @@ function TrackCard({
         }}
         className={cn(
           "flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors",
-          isPlaying
-            ? "bg-primary text-white"
-            : "bg-surface text-muted-foreground hover:bg-primary/10 hover:text-primary"
+          hasError
+            ? "bg-destructive/10 text-destructive"
+            : isPlaying
+              ? "bg-primary text-white"
+              : "bg-surface text-muted-foreground hover:bg-primary/10 hover:text-primary"
         )}
       >
-        {isPlaying ? (
+        {hasError ? (
+          <Warning weight="fill" className="size-4" />
+        ) : isPlaying ? (
           <Pause weight="fill" className="size-4" />
         ) : (
           <Play weight="fill" className="size-4 ml-0.5" />
@@ -176,6 +204,7 @@ function TrackCard({
         <p className={cn("text-sm font-semibold truncate", isSelected ? "text-primary" : "text-foreground")}>
           {track.name}
         </p>
+        <p className="text-xs text-muted-foreground truncate">{track.artist}</p>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <Badge variant="outline" className="text-[10px] px-1.5 py-0">
             {track.genre}
@@ -202,14 +231,13 @@ function TrackCard({
 }
 
 // ---------------------------------------------------------------------------
-// Waveform Visualization (mock)
+// Waveform Visualization
 // ---------------------------------------------------------------------------
 
 function WaveformVisualization({ isPlaying }: { isPlaying: boolean }) {
   return (
     <div className="flex h-16 items-center gap-[2px] px-4">
       {Array.from({ length: 80 }).map((_, i) => {
-        // Generate a pseudo-waveform pattern
         const height = Math.sin(i * 0.3) * 30 + Math.cos(i * 0.7) * 20 + 40;
         return (
           <div
@@ -236,10 +264,14 @@ function WaveformVisualization({ isPlaying }: { isPlaying: boolean }) {
 
 export function StepMusic() {
   const projectData = useWizardStore((s) => s.projectData);
+  const updateProjectData = useWizardStore((s) => s.updateProjectData);
   const markStepCompleted = useWizardStore((s) => s.markStepCompleted);
 
-  const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
+  const [selectedTrack, setSelectedTrack] = useState<string | null>(
+    projectData?.musicSettings?.trackId ?? null
+  );
   const [playingTrack, setPlayingTrack] = useState<string | null>(null);
+  const [errorTracks, setErrorTracks] = useState<Set<string>>(new Set());
   const [volume, setVolume] = useState(
     projectData?.musicSettings?.volume ?? 50
   );
@@ -250,26 +282,88 @@ export function StepMusic() {
     projectData?.musicSettings?.fadeOut ?? true
   );
 
-  const currentTrack = MOCK_TRACKS.find((t) => t.id === selectedTrack);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const currentTrack = MUSIC_TRACKS.find((t) => t.id === selectedTrack);
+
+  // Clean up audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  // Sync volume changes to currently playing audio
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume / 100;
+    }
+  }, [volume]);
 
   const handleTogglePlay = useCallback(
     (trackId: string) => {
       if (playingTrack === trackId) {
+        // Pause current track
+        audioRef.current?.pause();
         setPlayingTrack(null);
       } else {
+        // Stop previous track if any
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current = null;
+        }
+
+        const track = MUSIC_TRACKS.find((t) => t.id === trackId);
+        if (!track?.audioUrl) return;
+
+        const audio = new Audio(track.audioUrl);
+        audio.volume = volume / 100;
+        audio.onended = () => {
+          setPlayingTrack(null);
+        };
+        audio.onerror = () => {
+          setPlayingTrack(null);
+          setErrorTracks((prev) => new Set(prev).add(trackId));
+        };
+
+        audio
+          .play()
+          .then(() => {
+            // Clear any previous error for this track
+            setErrorTracks((prev) => {
+              const next = new Set(prev);
+              next.delete(trackId);
+              return next;
+            });
+          })
+          .catch(() => {
+            setPlayingTrack(null);
+            setErrorTracks((prev) => new Set(prev).add(trackId));
+          });
+
+        audioRef.current = audio;
         setPlayingTrack(trackId);
-        // Auto-stop after 5 seconds (mock)
-        setTimeout(() => setPlayingTrack(null), 5000);
       }
     },
-    [playingTrack]
+    [playingTrack, volume]
   );
 
   const handleApply = useCallback(() => {
     if (selectedTrack) {
+      updateProjectData({
+        musicSettings: {
+          trackId: selectedTrack,
+          volume,
+          fadeIn,
+          fadeOut,
+        },
+      });
       markStepCompleted(7);
     }
-  }, [selectedTrack, markStepCompleted]);
+  }, [selectedTrack, volume, fadeIn, fadeOut, updateProjectData, markStepCompleted]);
 
   if (!projectData) return <StepContent isLoading />;
 
@@ -284,17 +378,22 @@ export function StepMusic() {
               Music Library
             </h3>
             <Badge variant="outline" className="ml-auto text-xs">
-              {MOCK_TRACKS.length} tracks
+              {MUSIC_TRACKS.length} tracks
             </Badge>
           </div>
 
+          <p className="text-xs text-muted-foreground">
+            All tracks are CC0 public domain -- free to use in any project.
+          </p>
+
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {MOCK_TRACKS.map((track) => (
+            {MUSIC_TRACKS.map((track) => (
               <TrackCard
                 key={track.id}
                 track={track}
                 isSelected={selectedTrack === track.id}
                 isPlaying={playingTrack === track.id}
+                hasError={errorTracks.has(track.id)}
                 onSelect={() => setSelectedTrack(track.id)}
                 onTogglePlay={() => handleTogglePlay(track.id)}
               />
@@ -323,12 +422,16 @@ export function StepMusic() {
                     onClick={() => handleTogglePlay(currentTrack.id)}
                     className={cn(
                       "flex h-9 w-9 items-center justify-center rounded-full transition-colors",
-                      playingTrack === currentTrack.id
-                        ? "bg-primary text-white"
-                        : "bg-primary/10 text-primary hover:bg-primary/20"
+                      errorTracks.has(currentTrack.id)
+                        ? "bg-destructive/10 text-destructive"
+                        : playingTrack === currentTrack.id
+                          ? "bg-primary text-white"
+                          : "bg-primary/10 text-primary hover:bg-primary/20"
                     )}
                   >
-                    {playingTrack === currentTrack.id ? (
+                    {errorTracks.has(currentTrack.id) ? (
+                      <Warning weight="fill" className="size-4" />
+                    ) : playingTrack === currentTrack.id ? (
                       <Pause weight="fill" className="size-4" />
                     ) : (
                       <Play weight="fill" className="size-4 ml-0.5" />
@@ -339,7 +442,7 @@ export function StepMusic() {
                       {currentTrack.name}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {currentTrack.genre} -- {currentTrack.mood} -- {currentTrack.bpm} BPM -- {formatDuration(currentTrack.durationMs)}
+                      {currentTrack.artist} -- {currentTrack.genre} -- {currentTrack.mood} -- {currentTrack.bpm} BPM -- {formatDuration(currentTrack.durationMs)}
                     </p>
                   </div>
                 </div>
@@ -349,6 +452,16 @@ export function StepMusic() {
               <div className="bg-surface/30">
                 <WaveformVisualization isPlaying={playingTrack === currentTrack.id} />
               </div>
+
+              {/* Error message */}
+              {errorTracks.has(currentTrack.id) && (
+                <div className="flex items-center gap-2 px-5 py-2 bg-destructive/5 border-t border-destructive/20">
+                  <Warning weight="fill" className="size-3.5 text-destructive" />
+                  <p className="text-xs text-destructive">
+                    Audio could not be loaded. The track may be temporarily unavailable.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Audio settings */}

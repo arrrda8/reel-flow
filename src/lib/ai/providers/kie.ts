@@ -229,19 +229,23 @@ export class KieProvider {
 
   async waitForCompletion(
     taskId: string,
-    maxWaitMs = 300_000
+    maxWaitMs = 300_000,
+    model?: string
   ): Promise<{ videoUrl: string }> {
-    // Wait before first poll — tasks need time to register
-    await new Promise((r) => setTimeout(r, 5000));
+    // Wait before first poll — Runway/Veo tasks need more time to register
+    const isSlowModel = model === "runway" || model === "veo3";
+    const initialDelay = isSlowModel ? 15_000 : 5000;
+    await new Promise((r) => setTimeout(r, initialDelay));
 
     const start = Date.now();
 
     while (Date.now() - start < maxWaitMs) {
       const status = await this.getTaskStatus(taskId);
 
-      // Task not yet registered — keep polling
+      // Task not yet registered — poll slower for slow models
       if (!status) {
-        await new Promise((r) => setTimeout(r, 5000));
+        const nullPollInterval = isSlowModel ? 8000 : 5000;
+        await new Promise((r) => setTimeout(r, nullPollInterval));
         continue;
       }
 

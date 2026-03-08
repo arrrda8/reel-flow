@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import {
   FilmStrip,
-  Play,
-  Pause,
   ArrowRight,
   Check,
   SpinnerGap,
@@ -35,57 +33,21 @@ import { callAction } from "@/lib/call-action";
 // ---------------------------------------------------------------------------
 
 function VideoPlayer({ url, sceneIndex }: { url: string; sceneIndex: number }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying] = useState(false);
-
-  const toggle = useCallback(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) {
-      v.play();
-      setPlaying(true);
-    } else {
-      v.pause();
-      setPlaying(false);
-    }
-  }, []);
-
   return (
     <>
       <video
-        ref={videoRef}
         src={url}
-        className="absolute inset-0 w-full h-full object-cover cursor-pointer"
-        muted
+        className="absolute inset-0 w-full h-full object-contain bg-black"
+        controls
         playsInline
         preload="metadata"
-        onClick={toggle}
-        onEnded={() => setPlaying(false)}
       />
-      {/* Play/Pause overlay */}
-      <div
-        className="absolute inset-0 flex items-center justify-center cursor-pointer"
-        onClick={toggle}
-      >
-        <div
-          className={cn(
-            "flex h-10 w-10 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm transition-opacity",
-            playing ? "opacity-0 hover:opacity-100" : "opacity-100"
-          )}
-        >
-          {playing ? (
-            <Pause weight="fill" className="size-5 text-white" />
-          ) : (
-            <Play weight="fill" className="size-5 text-white ml-0.5" />
-          )}
-        </div>
-      </div>
       <div className="absolute bottom-1.5 left-1.5 pointer-events-none">
         <Badge className="bg-black/50 text-white text-[10px] backdrop-blur-sm border-0 px-1.5 py-0">
           Video
         </Badge>
       </div>
-      <div className="absolute bottom-1.5 right-1.5 pointer-events-none">
+      <div className="absolute top-1.5 right-1.5 pointer-events-none">
         <Badge className="bg-success/80 text-white text-[10px] backdrop-blur-sm border-0 px-1.5 py-0 gap-0.5">
           <Check weight="bold" className="size-2.5" />
           Ready
@@ -99,6 +61,8 @@ function VideoPlayer({ url, sceneIndex }: { url: string; sceneIndex: number }) {
 // Scene Video Row
 // ---------------------------------------------------------------------------
 
+const DEFAULT_VIDEO_PROMPT = "Animate this image with natural, cinematic motion. Add subtle camera movement and depth.";
+
 type VideoStatus = "idle" | "processing" | "completed" | "error";
 
 function SceneVideoRow({
@@ -111,6 +75,10 @@ function SceneVideoRow({
   videoUrl,
   hasImage,
   onGenerate,
+  prompt,
+  isEditingPrompt,
+  onPromptChange,
+  onToggleEdit,
 }: {
   sceneIndex: number;
   narrationText: string | null;
@@ -121,6 +89,10 @@ function SceneVideoRow({
   videoUrl: string | null;
   hasImage: boolean;
   onGenerate: () => void;
+  prompt: string;
+  isEditingPrompt: boolean;
+  onPromptChange: (val: string) => void;
+  onToggleEdit: () => void;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/20">
@@ -243,6 +215,30 @@ function SceneVideoRow({
           </div>
         </div>
       </div>
+
+      {/* Video Prompt */}
+      <div className="mt-2">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs text-muted-foreground font-medium">Video Prompt</span>
+          <button
+            type="button"
+            onClick={onToggleEdit}
+            className="text-xs text-primary hover:underline"
+          >
+            {isEditingPrompt ? "Done" : "Edit"}
+          </button>
+        </div>
+        {isEditingPrompt ? (
+          <textarea
+            value={prompt}
+            onChange={(e) => onPromptChange(e.target.value)}
+            className="w-full rounded-lg border border-border bg-surface p-2 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+            rows={2}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground/70 line-clamp-2">{prompt}</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -261,6 +257,10 @@ export function StepVideo() {
   const [errors, setErrors] = useState<Map<number, string>>(new Map());
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(0);
+
+  // Per-scene video prompts
+  const [videoPrompts, setVideoPrompts] = useState<Map<number, string>>(new Map());
+  const [editingPrompts, setEditingPrompts] = useState<Set<number>>(new Set());
 
   // Model selection
   const [models, setModels] = useState<KieModel[]>([]);
@@ -350,6 +350,46 @@ export function StepVideo() {
     init();
   }, [projectData?.id]);
 
+  // Load existing videos from DB on mount (video persistence)
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadExisting() {
+      if (!projectData?.id) return;
+      try {
+        const existing = await callAction<
+          Record<number, { videoKey: string; videoUrl: string }>
+        >("loadExistingVideos", projectData.id);
+        if (cancelled || !existing) return;
+
+        const keys = Object.keys(existing);
+        if (keys.length === 0) return;
+
+        const newVideoKeys = new Map<number, string>();
+        const newVideoUrls = new Map<number, string>();
+        const newStatuses = new Map<number, VideoStatus>();
+
+        for (const key of keys) {
+          const idx = Number(key);
+          newVideoKeys.set(idx, existing[idx].videoKey);
+          newVideoUrls.set(idx, existing[idx].videoUrl);
+          newStatuses.set(idx, "completed");
+        }
+
+        if (!cancelled) {
+          setVideoKeys(newVideoKeys);
+          setVideoUrls(newVideoUrls);
+          setStatuses(newStatuses);
+        }
+      } catch {
+        // Non-critical: if loading fails, user can re-generate
+      }
+    }
+
+    loadExisting();
+    return () => { cancelled = true; };
+  }, [projectData?.id]);
+
   const getStatus = (index: number): VideoStatus =>
     statuses.get(index) ?? "idle";
 
@@ -401,13 +441,15 @@ export function StepVideo() {
       });
 
       try {
+        const prompt = videoPrompts.get(sceneIndex) || DEFAULT_VIDEO_PROMPT;
         const result = await callAction<{ videoKey: string }>(
           "generateVideo",
           projectData.id,
           scene.id,
           imageKey,
           selectedModel,
-          scene.estimatedDuration ?? undefined
+          scene.estimatedDuration ?? undefined,
+          prompt
         );
 
         // Get presigned URL for the generated video
@@ -447,7 +489,7 @@ export function StepVideo() {
         });
       }
     },
-    [scenes, projectData?.id, imageKeys, selectedModel]
+    [scenes, projectData?.id, imageKeys, selectedModel, videoPrompts]
   );
 
   const handleGenerateAll = useCallback(async () => {
@@ -623,6 +665,26 @@ export function StepVideo() {
                 videoUrl={videoUrls.get(index) ?? null}
                 hasImage={imageKeys.has(scene.id)}
                 onGenerate={() => handleGenerate(index)}
+                prompt={videoPrompts.get(index) || DEFAULT_VIDEO_PROMPT}
+                isEditingPrompt={editingPrompts.has(index)}
+                onPromptChange={(val) => {
+                  setVideoPrompts((prev) => {
+                    const next = new Map(prev);
+                    next.set(index, val);
+                    return next;
+                  });
+                }}
+                onToggleEdit={() => {
+                  setEditingPrompts((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(index)) {
+                      next.delete(index);
+                    } else {
+                      next.add(index);
+                    }
+                    return next;
+                  });
+                }}
               />
             ))}
           </div>

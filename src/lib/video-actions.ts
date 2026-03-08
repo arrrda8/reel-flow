@@ -53,7 +53,8 @@ export async function generateVideo(
   sceneId: string,
   imageKey: string,
   model: string,
-  duration?: number
+  duration?: number,
+  prompt?: string
 ): Promise<{ success: true; videoKey: string; videoId: string }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
@@ -84,9 +85,10 @@ export async function generateVideo(
     imageUrl,
     model,
     duration,
+    prompt,
   });
 
-  const result = await provider.waitForCompletion(taskId);
+  const result = await provider.waitForCompletion(taskId, 300_000, model);
 
   if (!result.videoUrl) throw new Error("No video URL in result");
 
@@ -178,6 +180,52 @@ export async function getVideoPresignedUrl(
   if (!session?.user?.id) throw new Error("Not authenticated");
 
   return getPresignedUrl(videoKey, 3600);
+}
+
+// ---------------------------------------------------------------------------
+// loadExistingVideos – load completed videos for a project from DB
+// ---------------------------------------------------------------------------
+
+export async function loadExistingVideos(
+  projectId: string
+): Promise<Record<number, { videoKey: string; videoUrl: string }>> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  // Verify project ownership
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.userId, session.user.id)))
+    .limit(1);
+  if (!project) throw new Error("Project not found");
+
+  // Get all scenes ordered by index
+  const projectScenes = await db
+    .select({ id: scenes.id, orderIndex: scenes.orderIndex })
+    .from(scenes)
+    .where(eq(scenes.projectId, projectId))
+    .orderBy(scenes.orderIndex);
+
+  if (projectScenes.length === 0) return {};
+
+  // Get completed video clips for these scenes
+  const result: Record<number, { videoKey: string; videoUrl: string }> = {};
+  for (let i = 0; i < projectScenes.length; i++) {
+    const scene = projectScenes[i];
+    const [clip] = await db
+      .select({ fileUrl: videoClips.fileUrl })
+      .from(videoClips)
+      .where(and(eq(videoClips.sceneId, scene.id), eq(videoClips.status, "completed")))
+      .limit(1);
+
+    if (clip?.fileUrl) {
+      const videoUrl = await getPresignedUrl(clip.fileUrl, 3600);
+      result[i] = { videoKey: clip.fileUrl, videoUrl };
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

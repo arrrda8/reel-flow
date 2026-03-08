@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 300; // 5 minutes — rendering can take a while
 
 // Registry of allowed actions — maps action names to their module+function
 // This ensures only explicitly registered functions can be called
@@ -58,6 +58,9 @@ const ACTION_REGISTRY: Record<string, () => Promise<{ fn: (...args: any[]) => an
   checkKieApiKey: async () => ({
     fn: (await import("@/lib/video-actions")).checkKieApiKey,
   }),
+  loadExistingVideos: async () => ({
+    fn: (await import("@/lib/video-actions")).loadExistingVideos,
+  }),
 
   // project-actions
   updateProjectSettings: async () => ({
@@ -65,6 +68,19 @@ const ACTION_REGISTRY: Record<string, () => Promise<{ fn: (...args: any[]) => an
   }),
   saveScenes: async () => ({
     fn: (await import("@/lib/project-actions")).saveScenes,
+  }),
+
+  // preview-actions
+  loadPreviewData: async () => ({
+    fn: (await import("@/lib/preview-actions")).loadPreviewData,
+  }),
+
+  // render-actions
+  startRender: async () => ({
+    fn: (await import("@/lib/render-actions")).startRender,
+  }),
+  getRenderDownloadUrl: async () => ({
+    fn: (await import("@/lib/render-actions")).getRenderDownloadUrl,
   }),
 };
 

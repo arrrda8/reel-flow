@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { useTranslations, notifyLocaleChange } from "@/i18n";
 
 interface TopBarProps {
   projectName?: string;
@@ -44,9 +45,12 @@ export function TopBar({ projectName }: TopBarProps) {
     if (match) setCurrentLocale(match[1]);
   }, []);
 
+  const t = useTranslations();
+
   function handleLocaleChange(locale: "de" | "en") {
     document.cookie = `locale=${locale}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
     setCurrentLocale(locale);
+    notifyLocaleChange();
     router.refresh();
   }
 
@@ -71,7 +75,7 @@ export function TopBar({ projectName }: TopBarProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Language</DropdownMenuLabel>
+            <DropdownMenuLabel>{t.topBar.language}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => handleLocaleChange("de")}
@@ -123,7 +127,7 @@ export function TopBar({ projectName }: TopBarProps) {
             <DropdownMenuItem asChild>
               <Link href="/settings" className="cursor-pointer">
                 <GearSix weight="duotone" className="size-4" />
-                Settings
+                {t.common.settings}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -132,7 +136,7 @@ export function TopBar({ projectName }: TopBarProps) {
               className="cursor-pointer"
             >
               <SignOut weight="duotone" className="size-4" />
-              Sign Out
+              {t.topBar.signOut}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
