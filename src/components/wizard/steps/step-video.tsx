@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import {
   FilmStrip,
   Play,
+  Pause,
   ArrowRight,
   Check,
   SpinnerGap,
@@ -28,6 +29,71 @@ import {
 import { cn } from "@/lib/utils";
 import type { KieModel } from "@/lib/ai/providers/kie";
 import { callAction } from "@/lib/call-action";
+
+// ---------------------------------------------------------------------------
+// Video Player with play/pause toggle
+// ---------------------------------------------------------------------------
+
+function VideoPlayer({ url, sceneIndex }: { url: string; sceneIndex: number }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+
+  const toggle = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      v.play();
+      setPlaying(true);
+    } else {
+      v.pause();
+      setPlaying(false);
+    }
+  }, []);
+
+  return (
+    <>
+      <video
+        ref={videoRef}
+        src={url}
+        className="absolute inset-0 w-full h-full object-cover cursor-pointer"
+        muted
+        playsInline
+        preload="metadata"
+        onClick={toggle}
+        onEnded={() => setPlaying(false)}
+      />
+      {/* Play/Pause overlay */}
+      <div
+        className="absolute inset-0 flex items-center justify-center cursor-pointer"
+        onClick={toggle}
+      >
+        <div
+          className={cn(
+            "flex h-10 w-10 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm transition-opacity",
+            playing ? "opacity-0 hover:opacity-100" : "opacity-100"
+          )}
+        >
+          {playing ? (
+            <Pause weight="fill" className="size-5 text-white" />
+          ) : (
+            <Play weight="fill" className="size-5 text-white ml-0.5" />
+          )}
+        </div>
+      </div>
+      <div className="absolute bottom-1.5 left-1.5 pointer-events-none">
+        <Badge className="bg-black/50 text-white text-[10px] backdrop-blur-sm border-0 px-1.5 py-0">
+          Video
+        </Badge>
+      </div>
+      <div className="absolute bottom-1.5 right-1.5 pointer-events-none">
+        <Badge className="bg-success/80 text-white text-[10px] backdrop-blur-sm border-0 px-1.5 py-0 gap-0.5">
+          <Check weight="bold" className="size-2.5" />
+          Ready
+        </Badge>
+      </div>
+    </>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Scene Video Row
@@ -130,31 +196,7 @@ function SceneVideoRow({
             )}
           >
             {status === "completed" && videoUrl ? (
-              <>
-                <video
-                  src={videoUrl}
-                  className="absolute inset-0 w-full h-full object-cover"
-                  muted
-                  playsInline
-                  preload="metadata"
-                />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm">
-                    <Play weight="fill" className="size-5 text-white ml-0.5" />
-                  </div>
-                </div>
-                <div className="absolute bottom-1.5 left-1.5">
-                  <Badge className="bg-black/50 text-white text-[10px] backdrop-blur-sm border-0 px-1.5 py-0">
-                    Video
-                  </Badge>
-                </div>
-                <div className="absolute bottom-1.5 right-1.5">
-                  <Badge className="bg-success/80 text-white text-[10px] backdrop-blur-sm border-0 px-1.5 py-0 gap-0.5">
-                    <Check weight="bold" className="size-2.5" />
-                    Ready
-                  </Badge>
-                </div>
-              </>
+              <VideoPlayer url={videoUrl} sceneIndex={sceneIndex} />
             ) : status === "processing" ? (
               <div className="flex h-full items-center justify-center">
                 <div className="flex flex-col items-center gap-2">

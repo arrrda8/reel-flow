@@ -100,10 +100,25 @@ export async function deleteFile(key: string): Promise<void> {
  * Used by the /api/storage proxy route to serve files to the browser.
  */
 export async function getFileStream(
-  key: string
-): Promise<{ stream: ReadableStream; contentType: string }> {
+  key: string,
+  range?: { start: number; end?: number }
+): Promise<{ stream: ReadableStream; contentType: string; size: number; range?: { start: number; end: number } }> {
   const stat = await getMinioClient().statObject(BUCKET, key);
-  const nodeStream = await getMinioClient().getObject(BUCKET, key);
+  const size = stat.size;
+  const contentType = stat.metaData?.["content-type"] || guessContentType(key);
+
+  let nodeStream;
+  let actualRange: { start: number; end: number } | undefined;
+
+  if (range) {
+    const start = range.start;
+    const end = range.end !== undefined ? Math.min(range.end, size - 1) : size - 1;
+    const length = end - start + 1;
+    nodeStream = await getMinioClient().getPartialObject(BUCKET, key, start, length);
+    actualRange = { start, end };
+  } else {
+    nodeStream = await getMinioClient().getObject(BUCKET, key);
+  }
 
   // Convert Node.js Readable to Web ReadableStream
   const stream = new ReadableStream({
@@ -120,8 +135,7 @@ export async function getFileStream(
     },
   });
 
-  const contentType = stat.metaData?.["content-type"] || guessContentType(key);
-  return { stream, contentType };
+  return { stream, contentType, size, range: actualRange };
 }
 
 function guessContentType(key: string): string {
