@@ -65,11 +65,55 @@ export async function uploadFile(
 
 export async function getPresignedUrl(
   key: string,
-  expirySeconds = 3600
+  _expirySeconds = 3600
 ): Promise<string> {
-  return getMinioClient().presignedGetObject(BUCKET, key, expirySeconds);
+  // Return a proxy URL instead of a MinIO presigned URL.
+  // MinIO runs on an internal Docker network, so presigned URLs
+  // use internal hostnames that browsers can't reach.
+  return `/api/storage?key=${encodeURIComponent(key)}`;
 }
 
 export async function deleteFile(key: string): Promise<void> {
   await getMinioClient().removeObject(BUCKET, key);
+}
+
+/**
+ * Get a readable stream for a file, with content type detection.
+ * Used by the /api/storage proxy route to serve files to the browser.
+ */
+export async function getFileStream(
+  key: string
+): Promise<{ stream: ReadableStream; contentType: string }> {
+  const stat = await getMinioClient().statObject(BUCKET, key);
+  const nodeStream = await getMinioClient().getObject(BUCKET, key);
+
+  // Convert Node.js Readable to Web ReadableStream
+  const stream = new ReadableStream({
+    start(controller) {
+      nodeStream.on("data", (chunk: Buffer) => {
+        controller.enqueue(new Uint8Array(chunk));
+      });
+      nodeStream.on("end", () => {
+        controller.close();
+      });
+      nodeStream.on("error", (err: Error) => {
+        controller.error(err);
+      });
+    },
+  });
+
+  const contentType = stat.metaData?.["content-type"] || guessContentType(key);
+  return { stream, contentType };
+}
+
+function guessContentType(key: string): string {
+  if (key.endsWith(".mp3")) return "audio/mpeg";
+  if (key.endsWith(".wav")) return "audio/wav";
+  if (key.endsWith(".ogg")) return "audio/ogg";
+  if (key.endsWith(".mp4")) return "video/mp4";
+  if (key.endsWith(".webm")) return "video/webm";
+  if (key.endsWith(".png")) return "image/png";
+  if (key.endsWith(".jpg") || key.endsWith(".jpeg")) return "image/jpeg";
+  if (key.endsWith(".webp")) return "image/webp";
+  return "application/octet-stream";
 }
